@@ -67,10 +67,8 @@ if [ ! -f "$livedev" ]; then
     # Find the right device to run check on
     check_dev=$(get_check_dev "$livedev")
     # CD/DVD media check
-    [ -b "$check_dev" ] && fs=$(det_fs "$check_dev")
-    if [ "$fs" = "iso9660" ] || [ "$fs" = "udf" ]; then
-        check="yes"
-    fi
+    [ -b "$check_dev" ] && det_fs "$check_dev"
+    case $FS in iso9660 | udf) check=yes ;; esac
     getarg rd.live.check || check=""
     if [ -n "$check" ]; then
         type plymouth > /dev/null 2>&1 && plymouth --hide-splash
@@ -92,16 +90,6 @@ fi
 
 ln -s "$livedev" /run/initramfs/livedev
 
-# determine filesystem type for a filesystem image
-det_img_fs() {
-    udevadm settle >&2
-
-    # avoid blkid options to maintain compatibility with busybox
-    devicetype=$(blkid "$1")
-    fstype="${devicetype#*TYPE=\"}"
-    echo "${fstype%%\"*}"
-}
-
 CMDLINE=$(getcmdline)
 for arg in $CMDLINE; do
     case $arg in
@@ -111,31 +99,27 @@ done
 
 # mount the backing of the live image first
 mkdir -m 0755 -p /run/initramfs/live
-if [ -f "$livedev" ]; then
-    # no mount needed - we've already got the LiveOS image in initramfs
-    # check filesystem type and handle accordingly
-    fstype=$(det_img_fs "$livedev")
-    case $fstype in
-        squashfs | erofs) SQUASHED=$livedev ;;
-        auto) die "cannot mount live image (unknown filesystem type $fstype)" ;;
-        *) FSIMG=$livedev ;;
-    esac
-    load_fstype "$fstype"
-else
-    livedev_fstype=$(det_fs "$livedev")
-    load_fstype "$livedev_fstype"
-    if [ "$livedev_fstype" = "squashfs" ] || [ "$livedev_fstype" = "erofs" ]; then
+det_fs "$livedev"
+load_fstype "$FS"
+case $FS in
+    squashfs | erofs)
         # no mount needed - we've already got the LiveOS image in $livedev
-        SQUASHED=$livedev
-    elif [ "$livedev_fstype" != "ntfs" ]; then
-        if ! mount -n -t "$livedev_fstype" -o "${liverw:-ro}" "$livedev" /run/initramfs/live; then
-            die "Failed to mount block device of live image"
-            exit 1
-        fi
-    else
-        [ -x "/sbin/mount-ntfs-3g" ] && /sbin/mount-ntfs-3g -o "${liverw:-ro}" "$livedev" /run/initramfs/live
-    fi
-fi
+        SQUASHED="$livedev"
+        ;;
+    ntfs)
+        [ -x "/sbin/mount-ntfs-3g" ] \
+            && /sbin/mount-ntfs-3g -o "${liverw:-ro}" "$livedev" /run/initramfs/live
+        ;;
+    auto)
+        die "cannot mount live image (unknown filesystem type $FS)"
+        ;;
+    *)
+        [ -f "$livedev" ] && FSIMG="$livedev" || {
+            mount -n -t "$FS" -o "${liverw:-ro}" "$livedev" /run/initramfs/live \
+                || die "Failed to mount block device of live image"
+        }
+        ;;
+esac
 
 # overlay setup helper function
 do_live_overlay() {
@@ -175,30 +159,33 @@ do_live_overlay() {
             OVERLAY_LOOPDEV=$(losetup -f --show ${readonly_overlay:+-r} "/run/initramfs/overlayfs$pathspec")
             over=$OVERLAY_LOOPDEV
             umount -l /run/initramfs/overlayfs || :
-            oltype=$(det_img_fs "$OVERLAY_LOOPDEV")
-            if [ -z "$oltype" ] || [ "$oltype" = DM_snapshot_cow ]; then
-                if [ -n "$reset_overlay" ]; then
-                    info "Resetting the Device-mapper overlay."
-                    dd if=/dev/zero of="$OVERLAY_LOOPDEV" bs=64k count=1 conv=fsync 2> /dev/null
-                fi
-                if [ -n "$overlayfs" ]; then
-                    unset -v overlayfs
-                    [ -n "${DRACUT_SYSTEMD-}" ] && reloadsysrootmountunit=":>/xor_overlayfs;"
-                fi
-                setup="yes"
-            else
-                mount -n -t "$oltype" ${readonly_overlay:+-r} "$OVERLAY_LOOPDEV" /run/initramfs/overlayfs
-                if [ -d /run/initramfs/overlayfs/overlayfs ] \
-                    && [ -d /run/initramfs/overlayfs/ovlwork ]; then
-                    ln -s /run/initramfs/overlayfs/overlayfs /run/overlayfs${readonly_overlay:+-r}
-                    ln -s /run/initramfs/overlayfs/ovlwork /run/ovlwork${readonly_overlay:+-r}
-                    if [ -z "$overlayfs" ] && [ -n "${DRACUT_SYSTEMD-}" ]; then
-                        reloadsysrootmountunit=":>/xor_overlayfs;"
+            det_fs "$OVERLAY_LOOPDEV"
+            case $FS in
+                auto | DM_snapshot_cow)
+                    if [ -n "$reset_overlay" ]; then
+                        info "Resetting the Device-mapper overlay."
+                        dd if=/dev/zero of="$OVERLAY_LOOPDEV" bs=64k count=1 conv=fsync 2> /dev/null
                     fi
-                    overlayfs="required"
+                    if [ -n "$overlayfs" ]; then
+                        unset -v overlayfs
+                        [ -n "${DRACUT_SYSTEMD-}" ] && reloadsysrootmountunit=":>/xor_overlayfs;"
+                    fi
                     setup="yes"
-                fi
-            fi
+                    ;;
+                *)
+                    mount -n -t "$FS" ${readonly_overlay:+-r} "$OVERLAY_LOOPDEV" /run/initramfs/overlayfs
+                    if [ -d /run/initramfs/overlayfs/overlayfs ] \
+                        && [ -d /run/initramfs/overlayfs/ovlwork ]; then
+                        ln -s /run/initramfs/overlayfs/overlayfs /run/overlayfs${readonly_overlay:+-r}
+                        ln -s /run/initramfs/overlayfs/ovlwork /run/ovlwork${readonly_overlay:+-r}
+                        if [ -z "$overlayfs" ] && [ -n "${DRACUT_SYSTEMD-}" ]; then
+                            reloadsysrootmountunit=":>/xor_overlayfs;"
+                        fi
+                        overlayfs="required"
+                        setup="yes"
+                    fi
+                    ;;
+            esac
         elif [ -d "/run/initramfs/overlayfs$pathspec" ] \
             && [ -d "/run/initramfs/overlayfs$pathspec/../ovlwork" ]; then
             ln -s "/run/initramfs/overlayfs$pathspec" /run/overlayfs${readonly_overlay:+-r}
@@ -341,8 +328,8 @@ if [ -e "$SQUASHED" ]; then
     SQUASHED_LOOPDEV=$(losetup -f)
     losetup -r "$SQUASHED_LOOPDEV" "$SQUASHED"
     mkdir -m 0755 -p /run/initramfs/squashfs
-    fstype=$(det_img_fs "$SQUASHED_LOOPDEV")
-    load_fstype "$fstype"
+    det_fs "$SQUASHED_LOOPDEV"
+    load_fstype "$FS"
     mount -n -o ro "$SQUASHED_LOOPDEV" /run/initramfs/squashfs
 
     if [ -d /run/initramfs/squashfs/LiveOS ]; then
@@ -428,8 +415,8 @@ if [ -n "$overlayfs" ]; then
         if [ "$FSIMG" = "$SQUASHED" ]; then
             mount --bind /run/initramfs/squashfs /run/rootfsbase
         else
-            fstype=$(det_img_fs "$FSIMG")
-            load_fstype "$fstype"
+            det_fs "$FSIMG"
+            load_fstype "$FS"
             mount -r "$FSIMG" /run/rootfsbase
         fi
     else
