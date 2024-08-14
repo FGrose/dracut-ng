@@ -181,18 +181,15 @@ fsck_batch() {
 # verify supplied filesystem type:
 # if user provided the fs and we couldn't find it, assume user is right
 # if we found the fs, assume we're right
+# Works for block devices or image files.
 det_fs() {
     local _dev="$1"
     local _orig="${2:-auto}"
     local _fs
 
-    _fs=$(udevadm info --query=property --name="$_dev" \
-        | while read -r line || [ -n "$line" ]; do
-            if str_starts "$line" "ID_FS_TYPE="; then
-                echo "${line#ID_FS_TYPE=}"
-                break
-            fi
-        done)
+    _fs=$(blkid "$_dev")
+    _fs="${_fs#*TYPE=\"}"
+    _fs="${_fs%%\"*}"
     _fs=${_fs:-auto}
 
     if [ "$_fs" = "auto" ]; then
