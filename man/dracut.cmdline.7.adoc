@@ -1278,9 +1278,6 @@ root=live:ftp://ftp.example.com/liveboot.img
 root=live:torrent://example.com/liveboot.img.torrent
 --
 
-**rd.live.debug=**1::
-Enables debug output from the live boot process.
-
 **rd.live.dir=**__<path>__::
 Specifies the directory within the boot device where the squashfs.img or
 rootfs.img can be found.  By default, this is `/LiveOS`.
