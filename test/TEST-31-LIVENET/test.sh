@@ -5,7 +5,7 @@ set -eu
 TEST_DESCRIPTION="live root provided over network"
 
 # Uncomment these to debug failures
-#DEBUGFAIL="rd.shell rd.debug rd.live.debug loglevel=7"
+#DEBUGFAIL="rd.shell rd.debug loglevel=7"
 
 test_check() {
     if ! type -p mksquashfs &> /dev/null; then
