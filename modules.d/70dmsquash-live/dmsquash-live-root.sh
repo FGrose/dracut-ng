@@ -92,16 +92,6 @@ fi
 
 ln -s "$livedev" /run/initramfs/livedev
 
-# determine filesystem type for a filesystem image
-det_img_fs() {
-    udevadm settle >&2
-
-    # avoid blkid options to maintain compatibility with busybox
-    devicetype=$(blkid "$1")
-    fstype="${devicetype#*TYPE=\"}"
-    echo "${fstype%%\"*}"
-}
-
 CMDLINE=$(getcmdline)
 for arg in $CMDLINE; do
     case $arg in
@@ -114,13 +104,13 @@ mkdir -m 0755 -p /run/initramfs/live
 if [ -f "$livedev" ]; then
     # no mount needed - we've already got the LiveOS image in initramfs
     # check filesystem type and handle accordingly
-    fstype=$(det_img_fs "$livedev")
-    case $fstype in
+    fsType=$(det_fs "$livedev")
+    case $fsType in
         squashfs | erofs) SQUASHED=$livedev ;;
-        auto) die "cannot mount live image (unknown filesystem type $fstype)" ;;
+        auto) die "cannot mount live image (unknown filesystem type $fsType)" ;;
         *) FSIMG=$livedev ;;
     esac
-    load_fstype "$fstype"
+    load_fstype "$fsType"
 else
     livedev_fstype=$(det_fs "$livedev")
     load_fstype "$livedev_fstype"
@@ -175,7 +165,7 @@ do_live_overlay() {
             OVERLAY_LOOPDEV=$(losetup -f --show ${readonly_overlay:+-r} "/run/initramfs/overlayfs$pathspec")
             over=$OVERLAY_LOOPDEV
             umount -l /run/initramfs/overlayfs || :
-            oltype=$(det_img_fs "$OVERLAY_LOOPDEV")
+            oltype=$(det_fs "$OVERLAY_LOOPDEV")
             if [ -z "$oltype" ] || [ "$oltype" = DM_snapshot_cow ]; then
                 if [ -n "$reset_overlay" ]; then
                     info "Resetting the Device-mapper overlay."
@@ -341,8 +331,8 @@ if [ -e "$SQUASHED" ]; then
     SQUASHED_LOOPDEV=$(losetup -f)
     losetup -r "$SQUASHED_LOOPDEV" "$SQUASHED"
     mkdir -m 0755 -p /run/initramfs/squashfs
-    fstype=$(det_img_fs "$SQUASHED_LOOPDEV")
-    load_fstype "$fstype"
+    fsType=$(det_fs "$SQUASHED_LOOPDEV")
+    load_fstype "$fsType"
     mount -n -o ro "$SQUASHED_LOOPDEV" /run/initramfs/squashfs
 
     if [ -d /run/initramfs/squashfs/LiveOS ]; then
@@ -428,8 +418,8 @@ if [ -n "$overlayfs" ]; then
         if [ "$FSIMG" = "$SQUASHED" ]; then
             mount --bind /run/initramfs/squashfs /run/rootfsbase
         else
-            fstype=$(det_img_fs "$FSIMG")
-            load_fstype "$fstype"
+            fsType=$(det_fs "$FSIMG")
+            load_fstype "$fsType"
             mount -r "$FSIMG" /run/rootfsbase
         fi
     else
