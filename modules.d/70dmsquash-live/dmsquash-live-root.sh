@@ -92,12 +92,6 @@ fi
 
 ln -s "$livedev" /run/initramfs/livedev
 
-# determine filesystem type for a filesystem image
-det_img_fs() {
-    udevadm settle >&2
-    blkid -s TYPE -u noraid -o value "$1"
-}
-
 CMDLINE=$(getcmdline)
 for arg in $CMDLINE; do
     case $arg in
@@ -110,7 +104,7 @@ mkdir -m 0755 -p /run/initramfs/live
 if [ -f "$livedev" ]; then
     # no mount needed - we've already got the LiveOS image in initramfs
     # check filesystem type and handle accordingly
-    fstype=$(det_img_fs "$livedev")
+    fstype=$(det_fs "$livedev")
     case $fstype in
         squashfs | erofs) SQUASHED=$livedev ;;
         auto) die "cannot mount live image (unknown filesystem type $fstype)" ;;
@@ -171,7 +165,7 @@ do_live_overlay() {
             OVERLAY_LOOPDEV=$(losetup -f --show ${readonly_overlay:+-r} "/run/initramfs/overlayfs$pathspec")
             over=$OVERLAY_LOOPDEV
             umount -l /run/initramfs/overlayfs || :
-            oltype=$(det_img_fs "$OVERLAY_LOOPDEV")
+            oltype=$(det_fs "$OVERLAY_LOOPDEV")
             if [ -z "$oltype" ] || [ "$oltype" = DM_snapshot_cow ]; then
                 if [ -n "$reset_overlay" ]; then
                     info "Resetting the Device-mapper overlay."
