@@ -1,13 +1,12 @@
 #!/bin/sh
 
+if [ "$BASH" ]; then
+    PS4='+ $(IFS=" " read -r u0 _ </proc/uptime; echo "$u0") $BASH_SOURCE@$LINENO ${FUNCNAME:+$FUNCNAME()}: '
+else
+    PS4='+ $0@$LINENO: '
+fi
 command -v getarg > /dev/null || . /lib/dracut-lib.sh
 command -v get_rd_overlay > /dev/null || . /lib/overlayfs-lib.sh
-
-if getargbool 0 rd.live.debug; then
-    exec > /tmp/create-overlay.$$.out
-    exec 2>> /tmp/create-overlay.$$.out
-    set -x
-fi
 
 gatherData() {
     overlay=$(get_rd_overlay)
