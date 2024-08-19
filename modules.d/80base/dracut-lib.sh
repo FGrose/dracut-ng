@@ -353,8 +353,11 @@ setdebug() {
             RD_DEBUG=no
             if getargbool 0 rd.debug; then
                 RD_DEBUG=yes
-                [ -n "$BASH" ] \
-                    && export PS4='${BASH_SOURCE}@${LINENO}(${FUNCNAME[0]-}): '
+                if [ "$BASH" ]; then
+                    export PS4='+ $(IFS=" " read -r u0 _ </proc/uptime; echo "$u0") $BASH_SOURCE@$LINENO ${FUNCNAME:+$FUNCNAME()}: '
+                else
+                    export PS4='+ $0@$LINENO: '
+                fi
             fi
         fi
         export RD_DEBUG
