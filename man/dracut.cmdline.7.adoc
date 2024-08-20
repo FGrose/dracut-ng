@@ -1287,6 +1287,9 @@ root=live:ftp://ftp.example.com/liveboot.img
 root=live:torrent://example.com/liveboot.img.torrent
 --
 
+**rd.live.check**::
+Requests a CD/DVD/USB media check with checkisomd5.
+
 **rd.live.dir=**__<path>__::
 Specifies the directory within the boot device where the squashfs.img or
 rootfs.img can be found.  By default, this is `/LiveOS`.
