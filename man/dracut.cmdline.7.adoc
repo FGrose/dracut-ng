@@ -1327,6 +1327,9 @@ root=https://example.com/live.sqfs
 
 **rd.live.debug=**1::
 Enables debug output from the live boot process.
+=======
+**rd.live.check**::
+Requests a CD/DVD/USB media check with checkisomd5.
 
 **rd.live.dir=**__<path>__::
 Specifies the directory within the boot device where the squashfs.img or
