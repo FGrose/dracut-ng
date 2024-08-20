@@ -127,3 +127,31 @@ check_live_ram() {
         mount -o remount,size=$((runsize - runavail + imgsize + minmem))M /run
     fi
 }
+
+# Report device info.
+# $1 - block device or image file
+# Missing tags will be skipped, making order inconsistent between partitions.
+get_devInfo() {
+    local - dev p1 is_file=false
+    if [ -f "$1" ]; then
+        is_file=true
+        dev=$(losetup -f)
+        losetup -P "$dev" "$1" || return 1
+        case "${1##*.}" in
+            iso | ISO) p1=p1 ;;
+        esac
+        if command -v udevadm > /dev/null; then
+            udevadm trigger --name-match="$dev" --settle
+        else
+            local i=0
+            while [ $i -lt 10 ] && [ ! -b "$dev$p1" ]; do
+                sleep 0.1
+                i=$((i + 1))
+            done
+        fi
+    else
+        dev="$1"
+    fi
+    blkid "$dev$p1"
+    $is_file && losetup -d "$dev"
+}
