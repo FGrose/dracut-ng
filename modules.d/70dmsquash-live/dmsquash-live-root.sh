@@ -9,6 +9,7 @@ fi
 command -v getarg > /dev/null || . /lib/dracut-lib.sh
 command -v det_fs > /dev/null || . /lib/fs-lib.sh
 command -v unpack_archive > /dev/null || . /lib/img-lib.sh
+. /lib/partition-lib.sh
 
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
@@ -103,6 +104,7 @@ case "$livedev_fstype" in
         rd_live_check "${diskDevice:-$livedev}"
         srcdir=LiveOS
         liverw=ro
+        prep_Partition "$livedev"
         ;;
     *)
         srcdir=${live_dir:=LiveOS}
@@ -114,7 +116,6 @@ squash_image=$(getarg rd.live.squashimg) || squash_image=squashfs.img
 getargbool 0 rd.live.ram && live_ram=yes
 getargbool 0 rd.live.overlay.reset && reset_overlay=yes
 getargbool 0 rd.live.overlay.readonly && readonly_overlay=--readonly || readonly_overlay=''
-getargbool 0 rd.live.overlay.nouserconfirmprompt && overlay_no_user_confirm_prompt=--noprompt || overlay_no_user_confirm_prompt=''
 overlay=$(getarg rd.live.overlay)
 getargbool 0 rd.writable.fsimg && writable_fsimg=yes
 overlay_size=$(getarg rd.live.overlay.size=) || overlay_size=32768
@@ -243,8 +244,8 @@ do_live_overlay() {
     fi
 
     if [ -z "$setup" ] || [ -n "$readonly_overlay" ]; then
-        if [ -n "$setup" ] || [ -n "$overlay_no_user_confirm_prompt" ]; then
-            warn "Using temporary overlay."
+        if [ "$setup" ]; then
+            info "Using a temporary overlay."
         elif [ -n "$devspec" ] && [ -n "$pathspec" ]; then
             [ -z "$m" ] \
                 && m='   Unable to find a persistent overlay; using a temporary one.'
