@@ -2,10 +2,12 @@
 
 command -v getarg > /dev/null || . /lib/dracut-lib.sh
 
-getargbool 0 rd.overlayfs -d rd.live.overlay.overlayfs && overlayfs="yes"
+getargbool 0 rd.overlayfs -d rd.live.overlay.overlayfs && OverlayFS="yes"
 getargbool 0 rd.overlayfs.readonly -d rd.live.overlayfs.readonly && readonly_overlay="--readonly" || readonly_overlay=""
 
-if [ -n "$overlayfs" ]; then
+ROOTFLAGS="$(getarg rootflags)"
+
+if [ -n "$OverlayFS" ]; then
     if [ -n "$readonly_overlay" ] && [ -h /run/overlayfs-r ]; then
         ovlfs=lowerdir=/run/overlayfs-r:/run/rootfsbase
     else
