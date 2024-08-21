@@ -2,21 +2,20 @@
 
 command -v getarg > /dev/null || . /lib/dracut-lib.sh
 
-getargbool 0 rd.overlayfs -d rd.live.overlay.overlayfs && overlayfs="yes"
+getargbool 0 rd.overlayfs -d rd.live.overlay.overlayfs || return 0
 getargbool 0 rd.overlay.reset -d rd.live.overlay.reset && reset_overlay="yes"
-overlay=$(getarg rd.overlay -d rd.live.overlay)
 
-[ -n "$overlayfs" ] || [ -n "$overlay" ] || return 0
+OverlayFS=$(getarg rd.overlay -d rd.live.overlay) || return 0
 
 overlay_mode="tmpfs"
 overlay_device=""
 
-case "$overlay" in
+case "$OverlayFS" in
     LABEL=* | UUID=* | PARTLABEL=* | PARTUUID=* | /dev/*)
         overlay_mode="device"
-        overlay_device=$(label_uuid_to_dev "$overlay")
+        overlay_device=$(label_uuid_to_dev "$OverlayFS")
         if [ ! -b "$overlay_device" ]; then
-            warn "Failed to resolve device from '$overlay', falling back to tmpfs"
+            warn "Failed to resolve device from '$OverlayFS', falling back to tmpfs"
             overlay_mode="tmpfs"
         fi
         ;;
