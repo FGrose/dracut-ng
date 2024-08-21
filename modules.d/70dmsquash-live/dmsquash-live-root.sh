@@ -102,8 +102,8 @@ esac
 
 squash_image=$(getarg rd.live.squashimg) || squash_image=squashfs.img
 getargbool 0 rd.live.ram && live_ram=yes
-overlay=$(get_rd_overlay)
-getargbool 0 rd.overlay -d rd.live.overlay.overlayfs && overlayfs=yes
+rd_overlay=$(get_rd_overlay)
+getargbool 0 rd.overlay -d rd.live.overlay.overlayfs && OverlayFS=yes
 getargbool 0 rd.overlay.reset -d rd.live.overlay.reset && reset_overlay=yes
 getargbool 0 rd.overlay.readonly -d rd.live.overlay.readonly && readonly_overlay=--readonly
 getargbool 0 rd.live.overlay.nouserconfirmprompt && overlay_no_user_confirm_prompt=--noprompt
@@ -156,11 +156,11 @@ do_live_overlay() {
     # overlay: if non-ram overlay searching is desired, do it,
     #              otherwise, create traditional overlay in ram
 
-    if [ -z "$overlay" ]; then
+    if [ -z "$rd_overlay" ]; then
         pathspec="/${live_dir}/overlay-$label-$uuid"
-    elif strstr "$overlay" ":"; then
+    elif strstr "$rd_overlay" ":"; then
         # pathspec specified, extract
-        pathspec=${overlay##*:}
+        pathspec=${rd_overlay##*:}
     fi
 
     if [ -z "$pathspec" ] || [ "$pathspec" = auto ]; then
@@ -168,68 +168,68 @@ do_live_overlay() {
     elif ! str_starts "$pathspec" "/"; then
         pathspec=/"${pathspec}"
     fi
-    devspec=${overlay%%:*}
+    devspec=${rd_overlay%%:*}
 
     # need to know where to look for the overlay
-    if [ -z "$setup" ] && [ -n "$devspec" ] && [ -n "$pathspec" ] && [ -n "$overlay" ]; then
-        mkdir -m 0755 -p /run/initramfs/overlayfs
+    if [ -z "$setup" ] && [ -n "$devspec" ] && [ -n "$pathspec" ] && [ -n "$rd_overlay" ]; then
+        mkdir -m 0755 -p "${mntDir:=/run/initramfs/LiveOS_persist}"
         if ismounted "$devspec"; then
             devmnt=$(findmnt -e -v -n -o TARGET --source "$devspec")
             # We need $devspec writable for overlay storage
             mount -o remount,rw "$devspec"
-            mount --bind "$devmnt" /run/initramfs/overlayfs
+            mount --bind "$devmnt" "$mntDir"
         else
-            mount -n -t auto "$devspec" /run/initramfs/overlayfs || :
+            mount -n -t auto "$devspec" "$mntDir" || :
         fi
-        if [ -f /run/initramfs/overlayfs"$pathspec" ] && [ -w /run/initramfs/overlayfs"$pathspec" ]; then
-            OVERLAY_LOOPDEV=$(losetup -f --show ${readonly_overlay:+-r} /run/initramfs/overlayfs"$pathspec")
+        if [ -f "$mntDir$pathspec" ] && [ -w "$mntDir$pathspec" ]; then
+            OVERLAY_LOOPDEV=$(losetup -f --show ${readonly_overlay:+-r} "$mntDir$pathspec")
             over=$OVERLAY_LOOPDEV
-            umount -l /run/initramfs/overlayfs || :
+            umount -l "$mntDir" || :
             oltype=$(det_fs "$OVERLAY_LOOPDEV")
             if [ -z "$oltype" ] || [ "$oltype" = DM_snapshot_cow ]; then
                 if [ -n "$reset_overlay" ]; then
                     info "Resetting the Device-mapper overlay."
                     dd if=/dev/zero of="$OVERLAY_LOOPDEV" bs=64k count=1 conv=fsync 2> /dev/null
                 fi
-                if [ -n "$overlayfs" ]; then
-                    unset -v overlayfs
+                if [ -n "$OverlayFS" ]; then
+                    unset -v OverlayFS
                     [ -n "${DRACUT_SYSTEMD-}" ] && reloadsysrootmountunit=":>/xor_overlayfs;"
                 fi
                 setup=yes
             else
-                mount -n -t "$oltype" ${readonly_overlay:+-r} "$OVERLAY_LOOPDEV" /run/initramfs/overlayfs
-                if [ -d /run/initramfs/overlayfs/overlayfs ] \
-                    && [ -d /run/initramfs/overlayfs/ovlwork ]; then
-                    ln -s /run/initramfs/overlayfs/overlayfs /run/overlayfs${readonly_overlay:+-r}
-                    ln -s /run/initramfs/overlayfs/ovlwork /run/ovlwork${readonly_overlay:+-r}
-                    if [ -z "$overlayfs" ] && [ -n "${DRACUT_SYSTEMD-}" ]; then
+                mount -n -t "$oltype" ${readonly_overlay:+-r} "$OVERLAY_LOOPDEV" "$mntDir"
+                if [ -d "$mntDir"/overlayfs ] \
+                    && [ -d "$mntDir"/ovlwork ]; then
+                    ln -s "$mntDir"/overlayfs /run/overlayfs${readonly_overlay:+-r}
+                    ln -s "$mntDir"/ovlwork /run/ovlwork${readonly_overlay:+-r}
+                    if [ -z "$OverlayFS" ] && [ -n "${DRACUT_SYSTEMD-}" ]; then
                         reloadsysrootmountunit=":>/xor_overlayfs;"
                     fi
-                    overlayfs=required
+                    OverlayFS=required
                     setup=yes
                 fi
             fi
-        elif [ -d /run/initramfs/overlayfs"$pathspec" ] \
-            && [ -d /run/initramfs/overlayfs"$pathspec"/../ovlwork ]; then
-            ln -s /run/initramfs/overlayfs"$pathspec" /run/overlayfs${readonly_overlay:+-r}
-            ln -s /run/initramfs/overlayfs"$pathspec"/../ovlwork /run/ovlwork${readonly_overlay:+-r}
-            if [ -z "$overlayfs" ] && [ -n "${DRACUT_SYSTEMD-}" ]; then
+        elif [ -d "$mntDir$pathspec" ] \
+            && [ -d "$mntDir$pathspec"/../ovlwork ]; then
+            ln -s "$mntDir$pathspec" /run/overlayfs${readonly_overlay:+-r}
+            ln -s "$mntDir$pathspec"/../ovlwork /run/ovlwork${readonly_overlay:+-r}
+            if [ -z "$OverlayFS" ] && [ -n "${DRACUT_SYSTEMD-}" ]; then
                 reloadsysrootmountunit=":>/xor_overlayfs;"
             fi
-            overlayfs=required
+            OverlayFS=required
             setup=yes
         fi
     fi
-    if [ -n "$overlayfs" ]; then
+    if [ -n "$OverlayFS" ]; then
         if ! load_fstype overlay; then
-            if [ "$overlayfs" = required ]; then
+            if [ "$OverlayFS" = required ]; then
                 die "OverlayFS is required but not available."
                 exit 1
             fi
             [ -n "${DRACUT_SYSTEMD-}" ] && reloadsysrootmountunit=":>/xor_overlayfs;"
             m='OverlayFS is not available; using temporary Device-mapper overlay.'
             info "$m"
-            unset -v overlayfs setup
+            unset -v OverlayFS setup
         fi
     fi
 
@@ -272,7 +272,7 @@ do_live_overlay() {
                 read -r _
             fi
         fi
-        if [ -n "$overlayfs" ]; then
+        if [ -n "$OverlayFS" ]; then
             if [ -n "$readonly_overlay" ] && ! [ -h /run/overlayfs-r ]; then
                 info "No persistent overlay found."
                 unset -v readonly_overlay
@@ -291,7 +291,7 @@ do_live_overlay() {
     fi
 
     # set up the snapshot
-    if [ -z "$overlayfs" ]; then
+    if [ -z "$OverlayFS" ]; then
         if [ -n "$readonly_overlay" ] && [ -n "$OVERLAY_LOOPDEV" ]; then
             echo 0 "$sz" snapshot "$BASE_LOOPDEV" "$OVERLAY_LOOPDEV" P 8 | dmsetup create --readonly live-ro
             base=/dev/mapper/live-ro
@@ -321,12 +321,12 @@ do_live_overlay() {
 
         # Create a snapshot of the base image
         echo 0 "$thin_data_sz" thin /dev/mapper/live-overlay-pool 0 "$base" | dmsetup create live-rw
-    elif [ -z "$overlayfs" ]; then
+    elif [ -z "$OverlayFS" ]; then
         echo 0 "$sz" snapshot "$base" "$over" PO 8 | dmsetup create live-rw
     fi
 
     # Create a device for the ro base of overlaid file systems.
-    if [ -z "$overlayfs" ]; then
+    if [ -z "$OverlayFS" ]; then
         echo 0 "$sz" linear "$BASE_LOOPDEV" 0 | dmsetup create --readonly live-base
     fi
     ln -s "$BASE_LOOPDEV" /dev/live-base
@@ -360,10 +360,10 @@ if [ -e "$SQUASHED" ]; then
         fi
     elif [ -d /run/initramfs/squashfs/usr ] || [ -d /run/initramfs/squashfs/ostree ]; then
         FSIMG=$SQUASHED
-        if [ -z "$overlayfs" ] && [ -n "${DRACUT_SYSTEMD-}" ]; then
+        if [ -z "$OverlayFS" ] && [ -n "${DRACUT_SYSTEMD-}" ]; then
             reloadsysrootmountunit=":>/xor_overlayfs;"
         fi
-        overlayfs=required
+        OverlayFS=required
     else
         die "Failed to find a root filesystem in $SQUASHED."
         exit 1
@@ -396,9 +396,9 @@ if [ -n "$FSIMG" ]; then
     fi
     # For writable DM images...
     readonly_base=1
-    if [ -z "$SQUASHED" ] && [ -n "$live_ram" ] && [ -z "$overlayfs" ] \
+    if [ -z "$SQUASHED" ] && [ -n "$live_ram" ] && [ -z "$OverlayFS" ] \
         || [ -n "$writable_fsimg" ] \
-        || [ "$overlay" = none ] || [ "$overlay" = None ] || [ "$overlay" = NONE ]; then
+        || [ "$rd_overlay" = none ] || [ "$rd_overlay" = None ] || [ "$rd_overlay" = NONE ]; then
         if [ -z "$readonly_overlay" ]; then
             unset readonly_base
             setup=rw
@@ -427,11 +427,11 @@ fi
 
 ROOTFLAGS="$(getarg rootflags)"
 
-if [ "$overlayfs" = required ] && ! getargbool 0 rd.overlay; then
-    echo "rd.overlay" > /etc/cmdline.d/20-dmsquash-need-overlay.conf
+if [ "$OverlayFS" = required ]; then
+    echo rd.overlay > /etc/cmdline.d/20-dmsquash-need-overlay.conf
 fi
 
-if [ -n "$overlayfs" ]; then
+if [ -n "$OverlayFS" ]; then
     if [ -n "$FSIMG" ]; then
         mkdir -m 0755 -p /run/rootfsbase
         if [ "$FSIMG" = "$SQUASHED" ]; then
