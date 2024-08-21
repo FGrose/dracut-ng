@@ -20,6 +20,32 @@ str_replace() {
     printf -- '%s' "${out}${in}"
 }
 
+# Return an appropriate name for device $1 partition [$2]. Device names
+# that end with a digit must have a 'p' prepended to the partition number.
+aptPartitionName() {
+    local - dev="$1"
+    set +x
+    # Default to partition 1 if missing, 0, or negative.
+    local ptNbr="${2:-1}"
+    [ "$ptNbr" -lt 1 ] && ptNbr=1
+
+    case "${dev}~" in
+        # If an existing dm device, find and use its name.
+        *dm-[0-9]~)
+            local ppath=/devices/virtual/block/"${dev##*/}"
+            dev=/dev/mapper/$(cat /sys"$ppath"/dm/name)
+            ;;
+    esac
+    case "${dev}~" in
+        *[0-9]~)
+            printf '%s' "${dev}p$ptNbr"
+            ;;
+        *)
+            printf '%s' "${dev}$ptNbr"
+            ;;
+    esac
+}
+
 # get a systemd-compatible unit name from a path
 # (mimics unit_name_from_path_instance())
 dev_unit_name() {
