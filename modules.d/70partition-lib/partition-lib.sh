@@ -1,6 +1,28 @@
 #!/bin/sh
 # partition-lib.sh: utilities for partition editing
 
+run_parted() {
+    LC_ALL=C flock "$1" parted --script "$@"
+}
+
+# Set partitionTable, szDisk variables for diskDevice=$1
+# partitionTable holds values for the latest call to this function.
+get_partitionTable() {
+    local -
+    set +x
+    : "${fix=yes}"
+    partitionTable="$(run_parted "$1" ${fix:+--fix} -m unit B print free 2> /dev/kmsg)"
+    szDisk="${partitionTable#*"$1":}"
+    szDisk="${szDisk%%B*}"
+    fix=''
+    [ "$szDisk" = ' unrecognised disk label
+' ] && {
+        # Includes case of raw, unpartitioned disk.
+        run_parted "$1" -m mklabel gpt || die "Failed to make partition table on $1."
+        get_partitionTable "$1"
+    }
+}
+
 gatherData() {
     if [ -z "$rd_live_overlay" ]; then
         info "Skipping overlay creation: kernel command line parameter 'rd.live.overlay' is not set"
@@ -22,33 +44,39 @@ gatherData() {
         die "Overlay creation failed: only ext4, xfs, and btrfs are supported in the 'rd.live.overlay.cowfs' kernel parameter"
     fi
 
-    currentPartitionCount=$(grep --count -E "${diskDevice#/dev/}[0-9]+" /proc/partitions)
+    get_partitionTable
+    OLDIFS="$IFS"
+    IFS='
+'
+    # shellcheck disable=SC2086
+    set -- $partitionTable
 
-    freeSpaceStart=$(parted --script "${diskDevice}" --fix unit % print free \
-        | awk -v "x=${currentPartitionCount}" '$1 == x {getline; print $1}')
-    if [ -z "$freeSpaceStart" ]; then
-        info "Skipping overlay creation: there is no free space after the last partition"
-        return 1
-    fi
-    partitionStart=$((${freeSpaceStart%.*} + 1))
-    if [ $partitionStart -eq 100 ]; then
+    local currentPartitionCount
+    IFS=:
+    # shellcheck disable=SC2046
+    set -- $(eval printf '%s:' $\{$(($# - 1))\})
+    IFS="$OLDIFS"
+    currentPartitionCount=$1
+    freeSpaceStart=$((${3%B} + 1))
+    if [ $freeSpaceStart -gt $((szDisk - (1 << 28) )) ]; then
+        # Allow at least 256 MiB for persistence partition.
         info "Skipping overlay creation: there is not enough free space after the last partition"
         return 1
     fi
 
-    overlayPartition=$(aptPartitionName "${diskDevice}" $((currentPartitionCount + 1)))
+    p_Partition=$(aptPartitionName "${diskDevice}" $((currentPartitionCount + 1)))
 }
 
 createPartition() {
-    parted --script --align optimal "${diskDevice}" mkpart primary ${partitionStart}% 100%
+    run_parted "$diskDevice" --fix --align optimal mkpart "$overlayLabel" "${freeSpaceStart}B" 100%
 }
 
 createFilesystem() {
-    "mkfs.${filesystem}" -L "${overlayLabel}" "${overlayPartition}"
+    "mkfs.${filesystem}" -L "${overlayLabel}" "${p_Partition}"
 
     baseDir=/run/initramfs/create-overlayfs
     mkdir -p ${baseDir}
-    mount -t "${filesystem}" "${overlayPartition}" ${baseDir}
+    mount -t "${filesystem}" "${p_Partition}" ${baseDir}
 
     mkdir -p "${baseDir}/${live_dir}/ovlwork"
     mkdir "${baseDir}/${live_dir}/overlay-${label}-${uuid}"
