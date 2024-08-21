@@ -2,15 +2,15 @@
 # partition-lib.sh: utilities for partition editing
 
 gatherData() {
-    if [ -z "$overlay" ]; then
+    if [ -z "$rd_live_overlay" ]; then
         info "Skipping overlay creation: kernel command line parameter 'rd.live.overlay' is not set"
         return 1
     fi
-    if ! str_starts "${overlay}" LABEL=; then
+    if ! str_starts "${rd_live_overlay}" LABEL=; then
         die "Overlay creation failed: the partition must be set by LABEL in the 'rd.live.overlay' kernel parameter"
     fi
 
-    overlayLabel=${overlay#LABEL=}
+    overlayLabel=${rd_live_overlay#LABEL=}
     if [ -b "/dev/disk/by-label/${overlayLabel}" ]; then
         info "Skipping overlay creation: overlay already exists"
         return 1
