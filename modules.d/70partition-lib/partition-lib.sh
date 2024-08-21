@@ -36,7 +36,7 @@ gatherData() {
         return 1
     fi
 
-    overlayPartition=${diskDevice}$((currentPartitionCount + 1))
+    overlayPartition=$(aptPartitionName "${diskDevice}" $((currentPartitionCount + 1)))
 }
 
 createPartition() {
