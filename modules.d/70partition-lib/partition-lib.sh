@@ -51,24 +51,37 @@ gatherData() {
     # shellcheck disable=SC2086
     set -- $partitionTable
 
-    local currentPartitionCount
     IFS=:
     # shellcheck disable=SC2046
     set -- $(eval printf '%s:' $\{$(($# - 1))\})
     IFS="$OLDIFS"
-    currentPartitionCount=$1
+    newPtNbr=$(($1 + 1))
     freeSpaceStart=$((${3%B} + 1))
-    if [ $freeSpaceStart -gt $((szDisk - (1 << 28) )) ]; then
+
+    # Make optimalIO alignment at least 4 MiB.
+    #   See https://www.gnu.org/software/parted/manual/parted.html#FOOT2 .
+    [ "${optimalIO:-0}" -lt 4194304 ] && optimalIO=4194304
+
+    # Set optimalIO address for partition start - $1, variable - $2
+    optimize() {
+        eval "$2"=$((($1 + optimalIO - 1) / optimalIO * optimalIO))
+    }
+
+    partitionStart=$freeSpaceStart
+    optimize "$partitionStart" partitionStart
+
+    if [ $partitionStart -gt $((szDisk - (1 << 28))) ]; then
         # Allow at least 256 MiB for persistence partition.
-        info "Skipping overlay creation: there is not enough free space after the last partition"
+        info "Skipping overlay creation: there is less than 256 MiB of free space after the last partition"
         return 1
     fi
 
-    p_Partition=$(aptPartitionName "${diskDevice}" $((currentPartitionCount + 1)))
+    p_Partition=$(aptPartitionName "${diskDevice}" "$newPtNbr")
+
 }
 
 createPartition() {
-    run_parted "$diskDevice" --fix --align optimal mkpart "$overlayLabel" "${freeSpaceStart}B" 100%
+    run_parted "$diskDevice" --fix --align optimal mkpart "$overlayLabel" "${partitionStart}B" 100%
 }
 
 createFilesystem() {
