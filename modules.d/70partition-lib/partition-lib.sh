@@ -90,12 +90,14 @@ gatherData() {
     fi
 
     p_Partition=$(aptPartitionName "${diskDevice}" "$newPtNbr")
-
 }
 
 createPartition() {
+    # LiveOS persistence partition type
     run_parted "$diskDevice" --fix ${removePtNbr:+rm $removePtNbr} \
-        --align optimal mkpart "$overlayLabel" "${partitionStart}B" 100%
+        --align optimal mkpart "$overlayLabel" "${partitionStart}B" 100% \
+        type "$newPtNbr" ccea7cb3-70ba-4c31-8455-b906e46a00e2 \
+        set "$newPtNbr" no_automount on
 }
 
 createFilesystem() {
