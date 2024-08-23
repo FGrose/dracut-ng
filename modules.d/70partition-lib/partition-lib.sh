@@ -55,8 +55,21 @@ gatherData() {
     # shellcheck disable=SC2046
     set -- $(eval printf '%s:' $\{$(($# - 1))\})
     IFS="$OLDIFS"
-    newPtNbr=$(($1 + 1))
-    freeSpaceStart=$((${3%B} + 1))
+
+    # dd'd iso first boot situations.
+    case "$6" in
+        Gap1)
+            # Remove artifactual partition in Fedora 37-41 distribution .iso
+            removePtNbr=$1
+            ;;
+    esac
+    if [ "$removePtNbr" ]; then
+        freeSpaceStart=${2%B}
+        newPtNbr=$1
+    else
+        freeSpaceStart=$((${3%B} + 1))
+        newPtNbr=$(($1 + 1))
+    fi
 
     # Make optimalIO alignment at least 4 MiB.
     #   See https://www.gnu.org/software/parted/manual/parted.html#FOOT2 .
@@ -81,7 +94,8 @@ gatherData() {
 }
 
 createPartition() {
-    run_parted "$diskDevice" --fix --align optimal mkpart "$overlayLabel" "${partitionStart}B" 100%
+    run_parted "$diskDevice" --fix ${removePtNbr:+rm $removePtNbr} \
+        --align optimal mkpart "$overlayLabel" "${partitionStart}B" 100%
 }
 
 createFilesystem() {
