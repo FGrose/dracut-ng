@@ -49,7 +49,6 @@ GENERATOR_DIR="$2"
 
 [ -d "$GENERATOR_DIR" ] || mkdir -p "$GENERATOR_DIR"
 
-getargbool 0 rd.overlayfs.readonly -d rd.live.overlay.readonly && readonly_overlay="--readonly" || readonly_overlay=""
 getargbool 0 rd.overlayfs -d rd.live.overlayfs.readonly && OverlayFS="yes"
 [ -e /xor_overlayfs ] && xor_OverlayFS="yes"
 [ -e /xor_readonly ] && xor_readonly="--readonly"
@@ -62,13 +61,11 @@ ROOTFLAGS="$(getarg rootflags)"
     echo "[Mount]"
     echo "Where=/sysroot"
     if [ "$OverlayFS$xor_OverlayFS" = "yes" ]; then
+        getargbool 0 rd.overlayfs.readonly -d rd.live.overlay.readonly && readonly_overlay="--readonly"
+        [ "$readonly_overlay$xor_readonly" = "--readonly" ] && readonly_overlay="--readonly"
+        basedirs=lowerdir="${readonly_overlay:+/run/overlayfs-r:}"/run/rootfsbase
         echo "What=LiveOS_rootfs"
-        if [ "$readonly_overlay$xor_readonly" = "--readonly" ]; then
-            ovlfs=lowerdir=/run/overlayfs-r:/run/rootfsbase
-        else
-            ovlfs=lowerdir=/run/rootfsbase
-        fi
-        echo "Options=${ROOTFLAGS},${ovlfs},upperdir=/run/overlayfs,workdir=/run/ovlwork"
+        echo "Options=${ROOTFLAGS},${basedirs},upperdir=/run/overlayfs,workdir=/run/ovlwork"
         echo "Type=overlay"
         _dev=LiveOS_rootfs
     else

@@ -9,12 +9,7 @@ command -v getarg > /dev/null || . /lib/dracut-lib.sh
 
 getargbool 0 rd.overlayfs -d rd.live.overlay.overlayfs || return 0
 
-if [ -n "$readonly_overlay" ] && [ -h /run/overlayfs-r ]; then
-    ovlfs=lowerdir=/run/overlayfs-r:/run/rootfsbase
-else
-    ovlfs=lowerdir=/run/rootfsbase
-fi
+basedirs=lowerdir=${readonly_overlay:+/run/overlayfs-r:}/run/rootfsbase
 
-if ! strstr "$(cat /proc/mounts)" LiveOS_rootfs; then
-    mount -t overlay LiveOS_rootfs -o "$ovlfs",upperdir=/run/overlayfs,workdir=/run/ovlwork "$NEWROOT"
-fi
+strstr "$(cat /proc/mounts)" LiveOS_rootfs \
+    || mount -t overlay LiveOS_rootfs -o "$ROOTFLAGS,$basdirs",upperdir=/run/overlayfs,workdir=/run/ovlwork "$NEWROOT"
