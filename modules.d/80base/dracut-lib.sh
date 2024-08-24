@@ -58,6 +58,11 @@ str_ends() {
     [ "${1%*"$2"}" != "$1" ]
 }
 
+# Truncate string $1 to character length $2.
+str_truncate() {
+    printf '%.*s' "$2" "$1"
+}
+
 trim() {
     local var="$*"
     var="${var#"${var%%[![:space:]]*}"}" # remove leading whitespace characters
