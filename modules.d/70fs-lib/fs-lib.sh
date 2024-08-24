@@ -252,3 +252,66 @@ write_fs_tab() {
         systemctl --no-block start initrd-root-fs.target
     fi
 }
+
+mkfs_config() {
+    local fsType=$1
+    local lbl=$2
+    local sz=$3    # filesystem size in bytes
+    local attrs=$4 # comma-separated string of options
+    local ops=''
+    case "$fsType" in
+        btrfs)
+            # mkfs.btrfs maximum label length is 255 characters.
+            lbl=$(str_truncate "$lbl" 255)
+            ops="${attrs:+$attrs }-f -L $lbl"
+            # Recommended for out of space problems on filesystems under 16 GiB.
+            # https://btrfs.wiki.kernel.org/index.php/FAQ#if_your_device_is_small
+            [ "$sz" -lt $((1 << 34)) ] && ops="${ops} --mixed"
+            ;;
+        ext[432])
+            case "$fsType" in
+                ext[43]) ops='-j' ;;
+            esac
+            # mkfs.ext[432] maximum label length is 16 bytes.
+            lbl=$(str_truncate "$lbl" 16)
+            ops="${attrs:+$attrs }${ops:+"${ops} "}-F -L $lbl"
+            # Recommended for filesystems under 512 MiB.
+            # https://manned.org/mkfs.ext4.8
+            [ "$sz" -lt $((1 << 29)) ] && ops="${ops} -T small"
+            ;;
+        fat)
+            # mkfs.fat silently truncates label to 11 bytes.
+            lbl=$(str_truncate "$lbl" 11)
+            ops="${attrs:+$attrs }-c${VERBOSE:+v}n $lbl"
+            ;;
+        f2fs)
+            # mkfs.f2fs maximum label length is 512 unicode characters.
+            lbl=$(str_truncate "$lbl" 512)
+            ops="-f -l $lbl ${attrs:+-O $attrs}"
+            ;;
+        xfs)
+            # mkfs.xfs maximum label length is 12 characters.
+            lbl=$(str_truncate "$lbl" 12)
+            ops="${attrs:+$attrs }-f -L $lbl"
+            ;;
+    esac
+    [ "$fsType" = fat ] || ops="${QUIET:+-q }$ops"
+    mkfs_cmd=mkfs."$fsType $ops"
+}
+
+create_Filesystem() {
+    local fsType=$1
+    local dev=$2
+    local out=/dev/kmsg
+    [ "$QUIET" ] && out=/dev/null
+
+    printf 'Making %s filesystem on %s.
+' $fsType "$dev" > /dev/kmsg
+
+    load_fstype "$fsType"
+    # shellcheck disable=SC2086
+    LC_ALL=C flock "$dev" $mkfs_cmd "$dev" > "$out" 2>&1 \
+        || die "Failed to make filesystem with '$mkfs_cmd $dev'."
+    # Update udev_db for fs info changes.
+    udevadm trigger --name-match "$dev" --action change --settle > /dev/kmsg 2>&1
+}

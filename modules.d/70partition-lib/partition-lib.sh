@@ -32,8 +32,14 @@ parse_cfgArgs() {
 '
     for _; do
         case "$1" in
-            '' | btrfs | ext[432] | xfs)
+            '' | btrfs | ext[432] | f2fs | xfs)
                 fsType=${1:-${fsType:-ext4}}
+                ;;
+            ea=?*)
+                extra_attrs="${*}"
+                extra_attrs=${extra_attrs#ea=}
+                break
+                # ea,extra attribute,s must be the final arguments.
                 ;;
             [!0-9]* | 0*)
                 # Anything but a positive integer:
@@ -45,16 +51,17 @@ parse_cfgArgs() {
     done
 }
 
-gatherData() {
+prep_Partition() {
     [ "$p_Partition" ] && [ ! -b "$p_Partition" ] \
         && die "The specified persistence partition, $p_Partition, is not recognized."
 
     # Assign persistence partition fsType
     case "${fsType:=ext4}" in
         btrfs | ext[432] | xfs) ;;
+        f2fs) : ${extra_attrs:=extra_attr,inode_checksum,sb_checksum,compression} ;;
         *)
-            die "Partition creation halted: only filesystems btrfs|ext[432]|xfs
-                   are supported by the 'rd.live.overlay=[<fstype>[,...]]]' command line parameter."
+            die "Partition creation halted: only filesystems btrfs|ext[432]|f2fs|xfs
+                   are supported by the 'rd.live.overlay=[...[,<fstype>[,...]]]' command line parameter."
             ;;
     esac
 
@@ -101,33 +108,23 @@ gatherData() {
         info "Skipping overlay creation: there is less than 256 MiB of free space after the last partition"
         return 1
     fi
+    partitionEnd=$((szDisk - (1 << 20) ))
 
     p_Partition=$(aptPartitionName "${diskDevice}" "$newPtNbr")
-}
 
-createPartition() {
     # LiveOS persistence partition type
     run_parted "$diskDevice" --fix ${removePtNbr:+rm $removePtNbr} \
-        --align optimal mkpart LiveOS_persist "${partitionStart}B" 100% \
+        --align optimal mkpart LiveOS_persist "${partitionStart}B" "${partitionEnd}B" \
         type "$newPtNbr" ccea7cb3-70ba-4c31-8455-b906e46a00e2 \
         set "$newPtNbr" no_automount on
+    udevadm trigger --name-match "$p_Partition" --action add --settle > /dev/null 2>&1
+
+    mkfs_config "${fsType:=ext4}" LiveOS_persist $((partitionEnd - partitionStart + 1)) "${extra_attrs}"
+    create_Filesystem "$fsType" "$p_Partition"
+
+    mount -m -t "${fsType}" ${ROOTFLAGS:+-o $ROOTFLAGS} "${p_Partition}" "${mntDir:=/run/initramfs/LiveOS_persist}"
 }
 
-createFilesystem() {
-    "mkfs.${fsType}" -L LiveOS_persist "${p_Partition}"
-
-    mount -m -t "${fsType}" "${p_Partition}" ${mntDir:=/run/initramfs/LiveOS_persist}
-
-    mkdir -p "${mntDir}/${live_dir}/ovlwork" "${mntDir}/${ovlpath}"
-
-    umount ${mntDir}
-}
-
-prep_Partition() {
-    if gatherData "$1"; then
-        createPartition
-        udevsettle
-        createFilesystem
-        udevsettle
-    fi
+    mkdir -p "${mntDir}/${live_dir}/ovlwork" "$mntDir/$ovlpath"
+    umount "$mntDir"
 }
