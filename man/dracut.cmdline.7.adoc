@@ -1343,16 +1343,22 @@ By default, this is __squashfs.img__.
 Copy the complete image to RAM and use this for booting. This is useful
 when the image resides on, e.g., a DVD which needs to be ejected later on.
 
-**rd.overlay={**__<devspec>__[:__{<pathspec>|auto}__]|__none__}::
-Manage the usage of a persistent overlay for live images.
+**rd.overlay=**{[__<fstype>__[,__<devspec>__[:{__<pathspec>__|auto}]]]|none}::
+Manage the usage of a persistent overlay.
 +
---
-* _<devspec>_ specifies the path to a device with a mountable filesystem.
-* _<pathspec>_ is a path within the _<devspec>_ filesystem to either
-** a file (that is loop mounted for a Device-mapper overlay) or
-** a directory (that is symbolically linked to `/run/overlayfs` for a OverlayFS
-mount overlay). (A required sister directory `/<pathspec>/../ovlwork` is
-automatically made.)
+The parameter with no or just the *_<fstype>_* argument specifies the
+creation of a persistence partition for the overlay in adequate free space at
+the end of the *root=*live:_<path to blockdevice>_ disk on its first boot.
+Subsequent boots will ignore the fstype argument.
+* *_<fstype>_* is the filesystem type to use for the overlay bearing partition.
+*_<fstype>_* for a new partition may be [*btrfs*|*ext*[*432*]|*xfs*];
+the default is *ext4* for maximum availability, although *btrfs* may
+be preferred for greater endurance on common flash storage devices.
+* *_<devspec>_* specifies the path to a device with a mountable filesystem.
+* *_<pathspec>_* is a path within the _<devspec>_ filesystem to either a file
+(that is loop mounted for a Device-mapper overlay) or a directory (that is
+symbolically linked to `/run/overlayfs` for a OverlayFS mount overlay). (A
+required sister directory `/<pathspec>/../ovlwork` is automatically made.)
 * _none_ (the word itself) specifies that no overlay will be used, such as
 when an uncompressed, writable live root filesystem is available.
 
@@ -1375,11 +1381,9 @@ Device-mapper or OverlayFS) will be detected and it will be used.
 --
 rd.overlay=/dev/sdb1:/persistent-overlay.img
 rd.overlay=UUID=99440c1f-8daa-41bf-b965-b7240a8996f4
+rd.overlay
+rd.overlay=btrfs
 --
-
-**rd.live.overlay.cowfs=**__[btrfs|ext4|xfs]__::
-Specifies the filesystem to use when formatting the overlay partition.
-The default is ext4.
 
 **rd.live.overlay.size=**__<size_MiB>__::
 Specifies a non-persistent Device-mapper overlay size in MiB.  The default is

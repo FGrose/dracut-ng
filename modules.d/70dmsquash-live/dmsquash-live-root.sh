@@ -92,7 +92,7 @@ case "$livedev_fstype" in
         rd_live_check "${diskDevice:-$livedev}"
         srcdir=LiveOS
         liverw=ro
-        pre p_pt"$livedev"
+        [ -b "$p_Partition" ] || prep_Partition
         ;;
     *)
         srcdir=${live_dir:=LiveOS}
@@ -102,7 +102,6 @@ esac
 
 squash_image=$(getarg rd.live.squashimg) || squash_image=squashfs.img
 getargbool 0 rd.live.ram && live_ram=yes
-rd_overlay=$(get_rd_overlay)
 getargbool 0 rd.overlay -d rd.live.overlay.overlayfs && OverlayFS=yes
 getargbool 0 rd.overlay.reset -d rd.live.overlay.reset && reset_overlay=yes
 getargbool 0 rd.overlay.readonly -d rd.live.overlay.readonly && readonly_overlay=--readonly
@@ -110,6 +109,17 @@ getargbool 0 rd.live.overlay.nouserconfirmprompt && overlay_no_user_confirm_prom
 getargbool 0 rd.writable.fsimg && writable_fsimg=yes
 overlay_size=$(getarg rd.live.overlay.size=) || overlay_size=32768
 getargbool 0 rd.live.overlay.thin && thin_snapshot=yes
+
+rd_overlay=$(get_rd_overlay) && {
+    IFS=, parse_cfgArgs "$rd_overlay"
+
+    # Set default ovlpath, if not specified.
+    [ "$ovlpath" = auto ] && unset -v 'ovlpath'
+    : "${ovlpath:=/"$live_dir"/overlay-"$label"-"$uuid"}"
+    str_starts "$ovlpath" '/' || ovlpath=/"$ovlpath"
+}
+
+[ "$partitionTable" ] || get_partitionTable "$diskDevice"
 
 # mount the backing of the live image first
 mkdir -m 0755 -p /run/initramfs/live
@@ -152,37 +162,19 @@ esac
 
 # overlay setup helper function
 do_live_overlay() {
-    # create a sparse file for the overlay
-    # overlay: if non-ram overlay searching is desired, do it,
-    #              otherwise, create traditional overlay in ram
-
-    if [ -z "$rd_overlay" ]; then
-        pathspec="/${live_dir}/overlay-$label-$uuid"
-    elif strstr "$rd_overlay" ":"; then
-        # pathspec specified, extract
-        pathspec=${rd_overlay##*:}
-    fi
-
-    if [ -z "$pathspec" ] || [ "$pathspec" = auto ]; then
-        pathspec="/${live_dir}/overlay-$label-$uuid"
-    elif ! str_starts "$pathspec" "/"; then
-        pathspec=/"${pathspec}"
-    fi
-    devspec=${rd_overlay%%:*}
-
     # need to know where to look for the overlay
-    if [ -z "$setup" ] && [ -n "$devspec" ] && [ -n "$pathspec" ] && [ -n "$rd_overlay" ]; then
+    if [ ! "$setup" ] && [ "$p_Partition" ] && [ "$ovlpath" ]; then
         mkdir -m 0755 -p "${mntDir:=/run/initramfs/LiveOS_persist}"
-        if ismounted "$devspec"; then
-            devmnt=$(findmnt -e -v -n -o TARGET --source "$devspec")
-            # We need $devspec writable for overlay storage
-            mount -o remount,rw "$devspec"
+        if ismounted "$p_Partition"; then
+            devmnt=$(findmnt -e -v -n -o TARGET --source "$p_Partition")
+            # We need $ p_ptwritable for overlay storage
+            mount -o remount,rw "$p_Partition"
             mount --bind "$devmnt" "$mntDir"
         else
-            mount -n -t auto "$devspec" "$mntDir" || :
+            mount -n -t auto "$p_Partition" "$mntDir" || :
         fi
-        if [ -f "$mntDir$pathspec" ] && [ -w "$mntDir$pathspec" ]; then
-            OVERLAY_LOOPDEV=$(losetup -f --show ${readonly_overlay:+-r} "$mntDir$pathspec")
+        if [ -f "$mntDir$ovlpath" ] && [ -w "$mntDir$ovlpath" ]; then
+            OVERLAY_LOOPDEV=$(losetup -f --show ${readonly_overlay:+-r} "$mntDir$ovlpath")
             over=$OVERLAY_LOOPDEV
             umount -l "$mntDir" || :
             oltype=$(det_fs "$OVERLAY_LOOPDEV")
@@ -209,10 +201,10 @@ do_live_overlay() {
                     setup=yes
                 fi
             fi
-        elif [ -d "$mntDir$pathspec" ] \
-            && [ -d "$mntDir$pathspec"/../ovlwork ]; then
-            ln -s "$mntDir$pathspec" /run/overlayfs${readonly_overlay:+-r}
-            ln -s "$mntDir$pathspec"/../ovlwork /run/ovlwork${readonly_overlay:+-r}
+        elif [ -d "$mntDir$ovlpath" ] \
+            && [ -d "$mntDir$ovlpath"/../ovlwork ]; then
+            ln -s "$mntDir$ovlpath" /run/overlayfs${readonly_overlay:+-r}
+            ln -s "$mntDir$ovlpath"/../ovlwork /run/ovlwork${readonly_overlay:+-r}
             if [ -z "$OverlayFS" ] && [ -n "${DRACUT_SYSTEMD-}" ]; then
                 reloadsysrootmountunit=":>/xor_overlayfs;"
             fi
@@ -234,9 +226,9 @@ do_live_overlay() {
     fi
 
     if [ -z "$setup" ] || [ -n "$readonly_overlay" ]; then
-        if [ "$setup" ]; then
-            info "Using a temporary overlay."
-        elif [ -n "$devspec" ] && [ -n "$pathspec" ]; then
+        if [ -n "$setup" ] || [ -n "$overlay_no_user_confirm_prompt" ]; then
+            warn "Using temporary overlay."
+        elif [ "$p_Partition" ] && [ "$ovlpath" ]; then
             [ -z "$m" ] \
                 && m='   Unable to find a persistent overlay; using a temporary one.'
             m="$m"'

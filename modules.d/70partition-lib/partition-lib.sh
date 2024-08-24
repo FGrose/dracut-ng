@@ -23,28 +23,41 @@ get_partitionTable() {
     }
 }
 
+parse_cfgArgs() {
+    local -
+    set -x
+    # shellcheck disable=SC2068
+    set -- $@ # rd_live_overlay
+    IFS=' 	
+'
+    for _; do
+        case "$1" in
+            '' | btrfs | ext[432] | xfs)
+                fsType=${1:-${fsType:-ext4}}
+                ;;
+            [!0-9]* | 0*)
+                # Anything but a positive integer:
+                [ "$1" = auto ] || p_Partition=$(label_uuid_to_dev "${1%%:*}")
+                strstr "$1" ":" && ovlpath=${1##*:}
+                ;;
+        esac
+        shift
+    done
+}
+
 gatherData() {
-    if [ -z "$rd_live_overlay" ]; then
-        info "Skipping overlay creation: kernel command line parameter 'rd.live.overlay' is not set"
-        return 1
-    fi
-    if ! str_starts "${rd_live_overlay}" LABEL=; then
-        die "Overlay creation failed: the partition must be set by LABEL in the 'rd.live.overlay' kernel parameter"
-    fi
+    [ "$p_Partition" ] && [ ! -b "$p_Partition" ] \
+        && die "The specified persistence partition, $p_Partition, is not recognized."
 
-    overlayLabel=${rd_live_overlay#LABEL=}
-    if [ -b "/dev/disk/by-label/${overlayLabel}" ]; then
-        info "Skipping overlay creation: overlay already exists"
-        return 1
-    fi
+    # Assign persistence partition fsType
+    case "${fsType:=ext4}" in
+        btrfs | ext[432] | xfs) ;;
+        *)
+            die "Partition creation halted: only filesystems btrfs|ext[432]|xfs
+                   are supported by the 'rd.live.overlay=[<fstype>[,...]]]' command line parameter."
+            ;;
+    esac
 
-    filesystem=$(getarg rd.live.overlay.cowfs)
-    [ -z "$filesystem" ] && filesystem="ext4"
-    if [ "$filesystem" != "ext4" ] && [ "$filesystem" != "xfs" ] && [ "$filesystem" != "btrfs" ]; then
-        die "Overlay creation failed: only ext4, xfs, and btrfs are supported in the 'rd.live.overlay.cowfs' kernel parameter"
-    fi
-
-    get_partitionTable
     OLDIFS="$IFS"
     IFS='
 '
@@ -95,23 +108,19 @@ gatherData() {
 createPartition() {
     # LiveOS persistence partition type
     run_parted "$diskDevice" --fix ${removePtNbr:+rm $removePtNbr} \
-        --align optimal mkpart "$overlayLabel" "${partitionStart}B" 100% \
+        --align optimal mkpart LiveOS_persist "${partitionStart}B" 100% \
         type "$newPtNbr" ccea7cb3-70ba-4c31-8455-b906e46a00e2 \
         set "$newPtNbr" no_automount on
 }
 
 createFilesystem() {
-    "mkfs.${filesystem}" -L "${overlayLabel}" "${p_Partition}"
+    "mkfs.${fsType}" -L LiveOS_persist "${p_Partition}"
 
-    baseDir=/run/initramfs/create-overlayfs
-    mkdir -p ${baseDir}
-    mount -t "${filesystem}" "${p_Partition}" ${baseDir}
+    mount -m -t "${fsType}" "${p_Partition}" ${mntDir:=/run/initramfs/LiveOS_persist}
 
-    mkdir -p "${baseDir}/${live_dir}/ovlwork"
-    mkdir "${baseDir}/${live_dir}/overlay-${label}-${uuid}"
+    mkdir -p "${mntDir}/${live_dir}/ovlwork" "${mntDir}/${ovlpath}"
 
-    umount ${baseDir}
-    rm -r ${baseDir}
+    umount ${mntDir}
 }
 
 prep_Partition() {
