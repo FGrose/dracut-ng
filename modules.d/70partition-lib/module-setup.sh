@@ -6,11 +6,11 @@ check() {
 }
 
 installkernel() {
-    instmods btrfs ext4 fat xfs
+    instmods btrfs ext4 fat f2fs xfs
 }
 
 install() {
     inst_multiple blkid mkdir mount parted rmdir umount
-    inst_multiple -o mkfs.btrfs mkfs.ext4 mkfs.fat mkfs.xfs
+    inst_multiple -o mkfs.btrfs mkfs.ext4 mkfs.fat mkfs.f2fs mkfs.xfs
     inst_simple "$moddir/partition-lib.sh" "/lib/partition-lib.sh"
 }
