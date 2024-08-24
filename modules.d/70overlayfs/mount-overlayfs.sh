@@ -12,18 +12,9 @@ getargbool 0 rd.overlay -d rd.live.overlay.overlayfs \
 
 getargbool 0 rd.overlay.readonly -d rd.live.overlayfs.readonly && readonly_overlay=--readonly
 
-if [ -n "$readonly_overlay" ] && [ -h /run/overlayfs-r ]; then
-    ovlfs=lowerdir=/run/overlayfs-r:/run/rootfsbase
-else
-    ovlfs=lowerdir=/run/rootfsbase
-fi
+basedirs=lowerdir=${readonly_overlay:+/run/overlayfs-r:}/run/rootfsbase
 
-if strstr "$(cat /proc/mounts)" LiveOS_rootfs; then
-    # LiveOS_rootfs already mounted
-    return 0
-fi
+incol2 /proc/mounts "$NEWROOT" && umount "$NEWROOT"
 
-if incol2 /proc/mounts "$NEWROOT"; then
-    umount "$NEWROOT"
-fi
-mount -t overlay LiveOS_rootfs -o "$ovlfs",upperdir=/run/overlayfs,workdir=/run/ovlwork "$NEWROOT"
+strstr "$(cat /proc/mounts)" LiveOS_rootfs \
+    || mount -t overlay LiveOS_rootfs -o "$basdirs",upperdir=/run/overlayfs,workdir=/run/ovlwork "$NEWROOT"
