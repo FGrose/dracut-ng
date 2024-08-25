@@ -23,6 +23,41 @@ get_partitionTable() {
     }
 }
 
+# Additional mount flags appended to any from the command line for fsType.
+# Set default mkfs extra attributes, if none from the command line.
+# $1 - fsType
+# $2 - flag_var (p_ptFlags or rflags)
+set_FS_options() {
+    local - fsType="$1" flag_var="$2" param flags
+    set -x
+    case "$flag_var" in
+        p_ptFlags) param=rd.ovl.flags ;;
+        rflags) param=rootflags ;;
+    esac
+    flags=$(getarg "$param")
+    case "$fsType" in
+        btrfs)
+            [ "$subvol" ] && flags="${flags:+$flags,}subvol=$subvol"
+            flags="${flags:+$flags,}"compress=zstd:3
+            ;;
+        f2fs)
+            case "${extra_attrs:=extra_attr,inode_checksum,sb_checksum,compression}" in
+                *compression*) flags="${flags:+$flags,}"compress_algorithm=zstd:6,compress_chksum,atgc,gc_merge ;;
+            esac
+            ;;
+        ext[432])
+            fsckoptions='-E discard'
+            ;;
+    esac
+    if [ "$flags" ] && [ "$param" ]; then
+        mkdir -p /etc/kernel
+        printf ' %s=%s' "$param" "$flags" >> /etc/kernel/cmdline
+    fi
+    read -r "$flag_var" <<EOF
+$flags
+EOF
+}
+
 parse_cfgArgs() {
     local -
     set -x
@@ -33,7 +68,7 @@ parse_cfgArgs() {
     for _; do
         case "$1" in
             '' | btrfs | ext[432] | f2fs | xfs)
-                fsType=${1:-${fsType:-ext4}}
+                p_ptfsType=${1:-${p_ptfsType:-ext4}}
                 ;;
             ea=?*)
                 extra_attrs="${*}"
@@ -54,16 +89,6 @@ parse_cfgArgs() {
 prep_Partition() {
     [ "$p_Partition" ] && [ ! -b "$p_Partition" ] \
         && die "The specified persistence partition, $p_Partition, is not recognized."
-
-    # Assign persistence partition fsType
-    case "${fsType:=ext4}" in
-        btrfs | ext[432] | xfs) ;;
-        f2fs) : ${extra_attrs:=extra_attr,inode_checksum,sb_checksum,compression} ;;
-        *)
-            die "Partition creation halted: only filesystems btrfs|ext[432]|f2fs|xfs
-                   are supported by the 'rd.live.overlay=[...[,<fstype>[,...]]]' command line parameter."
-            ;;
-    esac
 
     OLDIFS="$IFS"
     IFS='
@@ -108,7 +133,7 @@ prep_Partition() {
         info "Skipping overlay creation: there is less than 256 MiB of free space after the last partition"
         return 1
     fi
-    partitionEnd=$((szDisk - (1 << 20) ))
+    partitionEnd=$((szDisk - (1 << 20)))
 
     p_Partition=$(aptPartitionName "${diskDevice}" "$newPtNbr")
 
@@ -119,13 +144,8 @@ prep_Partition() {
         set "$newPtNbr" no_automount on
     udevadm trigger --name-match "$p_Partition" --action add --settle > /dev/null 2>&1
 
-    mkfs_config "${fsType:=ext4}" LiveOS_persist $((partitionEnd - partitionStart + 1)) "${extra_attrs}"
-    create_Filesystem "$fsType" "$p_Partition"
-
-    ovlptFlags="$(getarg rd.ovl.flags)"
-
-    mount -m -t "${fsType}" ${ovlptFlags:+-o $ovlptFlags} "${p_Partition}" "${mntDir:=/run/initramfs/LiveOS_persist}"
-
-    mkdir -p "${mntDir}/${live_dir}/ovlwork" "$mntDir/$ovlpath"
-    umount "$mntDir"
+    [ "${p_ptFlags+set}" ] || set_FS_options "${p_ptfsType:-ext4}" p_ptFlags
+    mkfs_config "${p_ptfsType:=ext4}" LiveOS_persist $((partitionEnd - partitionStart + 1)) "${extra_attrs}"
+    wipefs --lock -af${QUIET:+q} "$p_Partition"
+    create_Filesystem "$p_ptfsType" "$p_Partition"
 }
