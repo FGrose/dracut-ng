@@ -172,6 +172,49 @@ esac
         || die "Failed to mount block device of live image."
 }
 
+check_OverlayFS_mod() {
+    # If needed, adjust OverlayFS,
+    # or warn if downgrading to a temporary DM overlay,
+    # or die if OverlayFS is required but unavailable.
+    if [ -d /sys/module/overlay ]; then
+        [ "$OverlayFS" ] || {
+            OverlayFS=LiveOS_rootfs
+            ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.overlayfs"
+        }
+        [ "$1" = die ] || setup=yes
+    elif [ "$1" = die ]; then
+        die 'OverlayFS is required but unavailable.'
+        exit 1
+    else
+        warn 'OverlayFS is not available; using temporary Device-mapper overlay.'
+    fi
+}
+
+# Set default mount flags for fsType $1, if none from the command line.
+# Set default mkfs extra attributes if none from the command line.
+set_FS_options() {
+    p_ptfsType=$1
+    case "$p_ptfsType" in
+        btrfs)
+            p_ptFlags='compress=zstd:3'
+            ;;
+        f2fs)
+            strstr "${extra_attrs:=extra_attr,inode_checksum,sb_checksum,compression}" compression \
+                && p_ptFlags='compress_algorithm=zstd:6,compress_chksum,atgc,gc_merge'
+            ;;
+    esac
+    local rd_ovl_flags
+    rd_ovl_flags=$(getarg rd.ovl.flags)
+    if [ "$rd_ovl_flags" ]; then
+        p_ptFlags="$rd_ovl_flags"
+    else
+        p_ptFlags=${p_ptFlags:+${p_ptFlags},}lazytime
+        # Record default mount flags for other users.
+        mkdir -p /etc/kernel
+        printf '%s' " rd.ovl.flags=$p_ptFlags" >> /etc/kernel/cmdline
+    fi
+}
+
 # overlay setup helper function
 do_live_overlay() {
     # need to know where to look for the overlay
@@ -183,7 +226,7 @@ do_live_overlay() {
             mount -o remount,rw "$p_Partition"
             mount --bind "$devmnt" "$mntDir"
         else
-            mount -n -t "${fsType:-auto}" ${ovlptFlags:+-o $ovlptFlags} "$p_Partition" "$mntDir" || :
+            mount -n -t "${p_ptfsType:-auto}" ${p_ptFlags:+-o $p_ptFlags} "$p_Partition" "$mntDir" || :
         fi
         if [ -f "$mntDir$ovlpath" ] && [ -w "$mntDir$ovlpath" ]; then
             OVERLAY_LOOPDEV=$(losetup -f --show ${readonly_overlay:+-r} "$mntDir$ovlpath")
@@ -204,18 +247,13 @@ do_live_overlay() {
                     && [ -d "$mntDir"/ovlwork ]; then
                     ln -s "$mntDir"/overlayfs /run/overlayfs${readonly_overlay:+-r}
                     ln -s "$mntDir"/ovlwork /run/ovlwork${readonly_overlay:+-r}
-                    [ "$OverlayFS" ] || ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.overlayfs"
-                    OverlayFS="required"
-                    setup=yes
+                    check_OverlayFS_mod
                 fi
             fi
-        elif [ -d "$mntDir$ovlpath" ] \
-            && [ -d "$mntDir$ovlpath"/../ovlwork ]; then
+        elif [ -d "$mntDir$ovlpath" ] && [ -d "$mntDir$ovlpath"/../ovlwork ]; then
             ln -s "$mntDir$ovlpath" /run/overlayfs${readonly_overlay:+-r}
             ln -s "$mntDir$ovlpath"/../ovlwork /run/ovlwork${readonly_overlay:+-r}
-            [ "$OverlayFS" ] || ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.overlayfs"
-            OverlayFS=required
-            setup=yes
+            check_OverlayFS_mod die
         fi
     fi
     if [ -n "$OverlayFS" ]; then
