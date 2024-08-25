@@ -313,3 +313,55 @@ create_Filesystem() {
     # Update udev_db for fs info changes.
     udevadm trigger --name-match "$dev" --action change --settle > /dev/kmsg 2>&1
 }
+
+# Additional mount flags appended to any from the command line.
+# $1 - flag_var $2 - flagstring from set_FS_opts() in <distribution>-lib.sh
+set_FS_options() {
+    local rd_flags rd_arg
+    if ! [ "$2" ]; then
+        case "$1" in
+            p_ptFlags) rd_flags=$(getarg rd.ovl.flags) ;;
+            rflags) rd_flags=$(getarg rootflags=) ;;
+        esac
+    else
+        case "$1" in
+            p_ptFlags) rd_arg=rd.ovl.flags ;;
+            rflags) rd_arg=rootflags ;;
+        esac
+        # Record additional mount flags for other users.
+        mkdir -p /etc/kernel
+        printf '%s' " $rd_arg=$2" >> /etc/kernel/cmdline
+    fi
+    eval "$1=${2:-$rd_flags}"
+}
+
+# Additional mount flags for fsType $1, appended to any from the command line.
+# Set default mkfs extra attributes if none from the command line.
+# $1 - fsType $2 - flagvariable
+### FIXME to be moved to <distribution>-lib.sh
+set_FS_opts() {
+    local rd_flags
+    case "$2" in
+        p_ptFlags)
+            rd_flags=$(getarg rd.ovl.flags)
+            [ "$rd_flags" ] || rd_flags=lazytime
+            ;;
+        rflags)
+            rd_flags=$(getarg rootflags=) ;;
+    esac
+    case "$1" in
+        btrfs)
+            rd_flags="${rd_flags:+"${rd_flags}"}${subvol:+,subvol="$subvol"}",compress=zstd:3
+            ;;
+        f2fs)
+            strstr "${extra_attrs:=extra_attr,inode_checksum,sb_checksum,compression}" compression \
+                && rd_flags="${rd_flags:+"${rd_flags}",}"'compress_algorithm=zstd:6,compress_chksum,atgc,gc_merge'
+            ;;
+        ext[432])
+            # Set default fsckoptions overideable by <mountpoint>/fsckoptions.
+            fsckoptions='-E discard'
+            ;;
+    esac
+    # Execute setting through function in fs-lib.sh
+    set_FS_options "$2" "$rd_flags"
+}
