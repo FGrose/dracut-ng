@@ -33,7 +33,7 @@ parse_cfgArgs() {
     for _; do
         case "$1" in
             '' | btrfs | ext[432] | f2fs | xfs)
-                fsType=${1:-${fsType:-ext4}}
+                p_ptfsType=${1:-${p_ptfsType:-ext4}}
                 ;;
             ea=?*)
                 extra_attrs="${*}"
@@ -54,16 +54,6 @@ parse_cfgArgs() {
 prep_Partition() {
     [ "$p_Partition" ] && [ ! -b "$p_Partition" ] \
         && die "The specified persistence partition, $p_Partition, is not recognized."
-
-    # Assign persistence partition fsType
-    case "${fsType:=ext4}" in
-        btrfs | ext[432] | xfs) ;;
-        f2fs) : ${extra_attrs:=extra_attr,inode_checksum,sb_checksum,compression} ;;
-        *)
-            die "Partition creation halted: only filesystems btrfs|ext[432]|f2fs|xfs
-                   are supported by the 'rd.live.overlay=[...[,<fstype>[,...]]]' command line parameter."
-            ;;
-    esac
 
     OLDIFS="$IFS"
     IFS='
@@ -119,13 +109,8 @@ prep_Partition() {
         set "$newPtNbr" no_automount on
     udevadm trigger --name-match "$p_Partition" --action add --settle > /dev/null 2>&1
 
-    mkfs_config "${fsType:=ext4}" LiveOS_persist $((partitionEnd - partitionStart + 1)) "${extra_attrs}"
-    create_Filesystem "$fsType" "$p_Partition"
-
-    ovlptFlags="$(getarg rd.ovl.flags)"
-
-    mount -m -t "${fsType}" ${ovlptFlags:+-o $ovlptFlags} "${p_Partition}" "${mntDir:=/run/initramfs/LiveOS_persist}"
-
-    mkdir -p "${mntDir}/${live_dir}/ovlwork" "$mntDir/$ovlpath"
-    umount "$mntDir"
+    set_FS_opts_w "${fsType:-ext4}" p_ptFlags
+    mkfs_config "${p_ptfsType:=ext4}" LiveOS_persist $((partitionEnd - partitionStart + 1)) "${extra_attrs}"
+    wipefs --lock -af${QUIET:+q} "$p_Partition"
+    create_Filesystem "$p_ptfsType" "$p_Partition"
 }
