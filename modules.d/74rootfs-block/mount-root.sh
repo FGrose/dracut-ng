@@ -3,90 +3,130 @@
 command -v getarg > /dev/null || . /lib/dracut-lib.sh
 command -v det_fs > /dev/null || . /lib/fs-lib.sh
 
-mount_root() {
-    local _rflags_ro
+# mount_source() should be called in this fashion:
+# [fstype=<fstype>] srcPartition=<srcPartition> mountPoint=<mountPoint> [srcflags=<srcflags>] mount_source
+mount_source() {
+    local - srcPartition mountPoint srcflags _srcflags_ro
+    set +x
     # sanity - determine/fix fstype
-    rootfs=$(det_fs "${root#block:}" "$fstype")
+    srcfsType=$(det_fs "$srcPartition" "$fstype")
 
     journaldev=$(getarg "root.journaldev=")
     if [ -n "$journaldev" ]; then
-        case "$rootfs" in
+        case "$srcfsType" in
             xfs)
-                rflags="${rflags:+${rflags},}logdev=$journaldev"
+                srcflags="${srcflags:+${srcflags},}logdev=$journaldev"
                 ;;
             *) ;;
         esac
     fi
 
-    _rflags_ro="$rflags,ro"
-    _rflags_ro="${_rflags_ro##,}"
+    _srcflags_ro="$srcflags,ro"
+    _srcflags_ro="${_srcflags_ro##,}"
 
-    while ! mount -t "${rootfs}" -o "$_rflags_ro" "${root#block:}" "$NEWROOT"; do
-        warn "Failed to mount -t ${rootfs} -o $_rflags_ro ${root#block:} $NEWROOT"
+    while ! mount -t "${srcfsType}" -o "$_srcflags_ro" "$srcPartition" "$mountPoint"; do
+        warn "Failed to mount -t ${srcfsType} -o $_srcflags_ro $srcPartition $mountPoint"
         fsck_ask_err
     done
 
     fsckoptions=
 
-    if ! getargbool 0 rd.skipfsck; then
+    if [ -f "$mountPoint"/etc/sysconfig/readonly-root ]; then
+        # shellcheck disable=SC1090
+        . "$mountPoint"/etc/sysconfig/readonly-root
+    fi
 
-        if getargbool 0 forcefsck; then
+    if [ -f "$mountPoint"/fastboot ] || getargbool 0 fastboot; then
+        fastboot=yes
+    fi
+
+    if ! getargbool 0 rd.skipfsck; then
+        if [ -f "$mountPoint"/fsckoptions ]; then
+            read -r fsckoptions < "$mountPoint"/fsckoptions
+        fi
+
+        if [ -f "$mountPoint"/forcefsck ] || getargbool 0 forcefsck; then
             fsckoptions="-f $fsckoptions"
+        elif [ -f "$mountPoint"/.autofsck ]; then
+            # shellcheck disable=SC1090
+            [ -f "$mountPoint"/etc/sysconfig/autofsck ] \
+                && . "$mountPoint"/etc/sysconfig/autofsck
+            if [ "$AUTOFSCK_DEF_CHECK" = "yes" ]; then
+                AUTOFSCK_OPT="$AUTOFSCK_OPT -f"
+            fi
+            if [ -n "$AUTOFSCK_SINGLEUSER" ]; then
+                warn "*** Warning -- the system did not shut down cleanly. "
+                warn "*** Dropping you to a shell; the system will continue"
+                warn "*** when you leave the shell."
+                emergency_shell
+            fi
+            fsckoptions="$AUTOFSCK_OPT $fsckoptions"
         fi
     fi
 
-    rootopts=
+    local srcopts=
+    local srcfsck=
     if getargbool 1 rd.fstab \
         && ! getarg rootflags > /dev/null \
-        && [ -f "$NEWROOT/etc/fstab" ] \
-        && ! [ -L "$NEWROOT/etc/fstab" ]; then
-        # if $NEWROOT/etc/fstab contains special mount options for
+        && [ -f "$mountPoint/etc/fstab" ] \
+        && ! [ -L "$mountPoint/etc/fstab" ]; then
+        # if $mountPoint/etc/fstab contains special mount options for
         # the root filesystem,
         # remount it with the proper options
-        rootopts="defaults"
+        srcopts="defaults"
         while read -r dev mp fs opts _ fsck || [ -n "$dev" ]; do
             # skip comments
             [ "${dev%%#*}" != "$dev" ] && continue
 
             if [ "$mp" = "/" ]; then
                 # sanity - determine/fix fstype
-                rootfs=$(det_fs "${root#block:}" "$fs")
-                rootopts=$opts
-                rootfsck=$fsck
+                srcfsType=$(det_fs "$srcPartition" "$fs")
+                srcopts=$opts
+                srcfsck=$fsck
                 break
             fi
-        done < "$NEWROOT/etc/fstab"
+        done < "$mountPoint/etc/fstab"
     fi
 
-    # we want rootflags (rflags) to take precedence so prepend rootopts to
+    # we want srcflags (for root, rootflags - rflags) to take precedence so prepend srcopts to
     # them
-    rflags="${rootopts},${rflags}"
-    rflags="${rflags#,}"
-    rflags="${rflags%,}"
+    srcflags="${srcopts},${srcflags}"
+    srcflags="${srcflags#,}"
+    srcflags="${srcflags%,}"
 
     # backslashes are treated as escape character in fstab
-    # esc_root=$(echo ${root#block:} | sed 's,\\,\\\\,g')
-    # printf '%s %s %s %s 1 1 \n' "$esc_root" "$NEWROOT" "$rootfs" "$rflags" >/etc/fstab
+    # esc_root=$(echo $srcPartition | sed 's,\\,\\\\,g')
+    # printf '%s %s %s %s 1 1 \n' "$esc_root" "$mountPoint" "$srcfsType" "$srcflags" >/etc/fstab
 
-    if ! getargbool 0 ro && fsck_able "$rootfs" \
-        && [ "$rootfsck" != "0" ] && [ -z "$fastboot" ] \
-        && ! strstr "${rflags}" _netdev \
+    if ! getargbool 0 ro && fsck_able "$srcfsType" \
+        && [ "$srcfsck" != "0" ] && [ -z "$fastboot" ] \
+        && ! strstr "${srcflags}" _netdev \
         && ! getargbool 0 rd.skipfsck; then
-        umount "$NEWROOT"
-        fsck_single "${root#block:}" "$rootfs" "$rflags" "$fsckoptions"
+        umount "$mountPoint"
+        fsck_single "$srcPartition" "$srcfsType" "$srcflags" "$fsckoptions"
     fi
 
-    echo "${root#block:} $NEWROOT $rootfs ${rflags:-defaults} 0 ${rootfsck:-0}" >> /etc/fstab
+    echo "$srcPartition $mountPoint $srcfsType ${srcflags:-defaults} 0 ${srcfsck:-0}" >> /etc/fstab
 
-    if ! ismounted "$NEWROOT"; then
-        info "Mounting ${root#block:} with -o ${rflags}"
-        mount "$NEWROOT" 2>&1 | vinfo
-    elif ! are_lists_eq , "$rflags" "$_rflags_ro" defaults; then
-        info "Remounting ${root#block:} with -o ${rflags}"
-        mount -o remount "$NEWROOT" 2>&1 | vinfo
+    if ! ismounted "$mountPoint"; then
+        info "Mounting $srcPartition${srcflags:+ with -o $srcflags}"
+        mount "$mountPoint" 2>&1 | vinfo
+    elif ! are_lists_eq , "$srcflags" "$_srcflags_ro" defaults; then
+        info "Remounting $srcPartition${srcflags:+ with -o $srcflags}"
+        mount -o remount "$mountPoint" 2>&1 | vinfo
+    fi
+
+    if ! getargbool 0 rd.skipfsck; then
+        [ -f "$mountPoint"/forcefsck ] && rm -f -- "$mountPoint"/forcefsck 2> /dev/null
+        [ -f "$mountPoint"/.autofsck ] && rm -f -- "$mountPoint"/.autofsck 2> /dev/null
     fi
 }
 
-if [ -n "$root" ] && [ -z "${root%%block:*}" ]; then
-    mount_root
+# Call with preset arguments like:
+#  [fstype=<fstype>] srcPartition=<srcPartition> mountPoint=<mountPoint> [srcflags=<srcflags>] \
+#      /path/to/this/script 'override' to invoke an alternative mount.
+if [ "$root" ] && [ -z "${root%%block:*}" ] && [ "$1" != override ]; then
+    srcPartition="${root#block:}" mountPoint="$NEWROOT" srcflags="$rflags" mount_source
+else
+    srcPartition="$srcPartition" mountPoint="$mountPoint" srcflags="$srcflags" mount_source
 fi
