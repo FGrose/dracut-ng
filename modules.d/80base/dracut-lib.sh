@@ -131,6 +131,7 @@ getcmdline() {
     local CMDLINE_ETC=''
     local CMDLINE_PROC=''
     local CMDLINE_RUN=''
+    local CMDLINE_ETC_KERNEL=''
     unset _line
 
     if [ -e /etc/cmdline ]; then
@@ -155,7 +156,13 @@ getcmdline() {
             CMDLINE_RUN="$CMDLINE_RUN $_line"
         done < "$_i"
     done
-    CMDLINE="$CMDLINE_ETC_D $CMDLINE_ETC $CMDLINE_PROC $CMDLINE_RUN"
+    # Ordered last for boot-time precedence.
+    if [ -e /etc/kernel/cmdline ]; then
+        while read -r _line || [ -n "$_line" ]; do
+            CMDLINE_ETC_KERNEL="$CMDLINE_ETC_KERNEL $_line"
+        done < /etc/kernel/cmdline
+    fi
+    CMDLINE="$CMDLINE_ETC_D $CMDLINE_ETC $CMDLINE_PROC $CMDLINE_RUN $CMDLINE_ETC_KERNEL"
     printf "%s" "$CMDLINE"
 }
 
