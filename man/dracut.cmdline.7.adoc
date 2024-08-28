@@ -1239,7 +1239,7 @@ the location of your squashed root filesystem.
 - The compressed SquashFS image can be copied during boot to RAM at
 `/run/initramfs/squashed.img` by using the **rd.live.ram=1** option.
 - A device with a persistent overlay can be booted read-only by using the
-**rd.live.overlay.readonly** option on the kernel command line.  This will
+**rd.overlayfs.readonly** option on the kernel command line.  This will
 either cause a temporary, writable overlay to be stacked over a read-only
 snapshot of the root filesystem or the OverlayFS mount will use an additional
 lower layer with the root filesystem.
@@ -1405,7 +1405,7 @@ rd.overlay=f2fs
 Specifies a non-persistent Device-mapper overlay size in MiB.  The default is
 _32768_.
 
-**rd.live.overlay.readonly=**1::
+**rd.overlayfs.readonly=**1::
 This is used to boot in a read-only mode with a normally read-write persistent
 overlay.  With this option,
 * Device-mapper overlays will have an additional, non-persistent, writable
@@ -1415,7 +1415,10 @@ of the base root filesystem and the persistent overlay, or
 * an OverlayFS mount will link the persistent overlay directory at
 `/run/overlayfs‑r` as an additional read-only lower layer stacked over the base
 root filesystem, and `/run/overlayfs` becomes the temporary, writable, upper
-directory overlay, to complete the bootable root filesystem.
+directory overlay, to complete the bootable root filesystem. Requires the
+dracut 'overlayfs' module.
+ 
+
 
 **rd.overlay.reset=**1::
 
@@ -1596,6 +1599,16 @@ _/etc/cmdline_::
 
 _/etc/cmdline.d/*.conf_::
     Can contain additional command line options.
+
+_/etc/kernel/cmdline_::
+    Used for boot-time changes to dracut-processed command line options
+    overriding others—including those on the kernel command line.
++
+[listing]
+.Example of changing an option at boot time:
+--
+printf '%s' " rd.overlayfs=0" >> /etc/kernel/cmdline
+--
 
 AUTHOR
 ------

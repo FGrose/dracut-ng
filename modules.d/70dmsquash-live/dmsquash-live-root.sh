@@ -183,10 +183,8 @@ do_live_overlay() {
                     info "Resetting the Device-mapper overlay."
                     dd if=/dev/zero of="$OVERLAY_LOOPDEV" bs=64k count=1 conv=fsync 2> /dev/null
                 fi
-                if [ -n "$OverlayFS" ]; then
-                    unset -v OverlayFS
-                    [ -n "${DRACUT_SYSTEMD-}" ] && reloadsysrootmountunit=":>/xor_overlayfs;"
-                fi
+                [ "$OverlayFS" ] && ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.overlayfs=0"
+                unset -v 'OverlayFS'
                 setup=yes
             else
                 mount -n -t "$oltype" ${readonly_overlay:+-r} "$OVERLAY_LOOPDEV" "$mntDir"
@@ -194,10 +192,8 @@ do_live_overlay() {
                     && [ -d "$mntDir"/ovlwork ]; then
                     ln -s "$mntDir"/overlayfs /run/overlayfs${readonly_overlay:+-r}
                     ln -s "$mntDir"/ovlwork /run/ovlwork${readonly_overlay:+-r}
-                    if [ -z "$OverlayFS" ] && [ -n "${DRACUT_SYSTEMD-}" ]; then
-                        reloadsysrootmountunit=":>/xor_overlayfs;"
-                    fi
-                    OverlayFS=required
+                    [ "$OverlayFS" ] || ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.overlayfs"
+                    OverlayFS="required"
                     setup=yes
                 fi
             fi
@@ -205,9 +201,7 @@ do_live_overlay() {
             && [ -d "$mntDir$ovlpath"/../ovlwork ]; then
             ln -s "$mntDir$ovlpath" /run/overlayfs${readonly_overlay:+-r}
             ln -s "$mntDir$ovlpath"/../ovlwork /run/ovlwork${readonly_overlay:+-r}
-            if [ -z "$OverlayFS" ] && [ -n "${DRACUT_SYSTEMD-}" ]; then
-                reloadsysrootmountunit=":>/xor_overlayfs;"
-            fi
+            [ "$OverlayFS" ] || ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.overlayfs"
             OverlayFS=required
             setup=yes
         fi
@@ -218,7 +212,7 @@ do_live_overlay() {
                 die "OverlayFS is required but not available."
                 exit 1
             fi
-            [ -n "${DRACUT_SYSTEMD-}" ] && reloadsysrootmountunit=":>/xor_overlayfs;"
+            ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.overlayfs=0"
             m='OverlayFS is not available; using temporary Device-mapper overlay.'
             info "$m"
             unset -v OverlayFS setup
@@ -268,7 +262,7 @@ do_live_overlay() {
             if [ -n "$readonly_overlay" ] && ! [ -h /run/overlayfs-r ]; then
                 info "No persistent overlay found."
                 unset -v readonly_overlay
-                [ -n "${DRACUT_SYSTEMD-}" ] && reloadsysrootmountunit="${reloadsysrootmountunit}:>/xor_readonly;"
+                ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.overlayfs.readonly=0"
             fi
         else
             dd if=/dev/null of=/overlay bs=1024 count=1 seek=$((overlay_size * 1024)) 2> /dev/null
@@ -352,9 +346,7 @@ if [ -e "$SQUASHED" ]; then
         fi
     elif [ -d /run/initramfs/squashfs/usr ] || [ -d /run/initramfs/squashfs/ostree ]; then
         FSIMG=$SQUASHED
-        if [ -z "$OverlayFS" ] && [ -n "${DRACUT_SYSTEMD-}" ]; then
-            reloadsysrootmountunit=":>/xor_overlayfs;"
-        fi
+        [ "$OverlayFS" ] || ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.overlayfs"
         OverlayFS=required
     else
         die "Failed to find a root filesystem in $SQUASHED."
@@ -412,13 +404,10 @@ if [ -n "$FSIMG" ]; then
     fi
 fi
 
-if [ -n "$reloadsysrootmountunit" ]; then
-    eval "$reloadsysrootmountunit"
-    systemctl daemon-reload
-fi
-
-if [ "$OverlayFS" = required ]; then
-    echo rd.overlay > /etc/cmdline.d/20-dmsquash-need-overlay.conf
+if [ "$ETC_KERNEL_CMDLINE" ]; then
+    mkdir -p /etc/kernel
+    printf '%s' " $ETC_KERNEL_CMDLINE" >> /etc/kernel/cmdline
+    [ "$DRACUT_SYSTEMD" ] && systemctl daemon-reload
 fi
 
 if [ -n "$OverlayFS" ]; then
