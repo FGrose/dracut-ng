@@ -251,18 +251,6 @@ do_live_overlay() {
             setup=setup
         fi
     fi
-    if [ "$OverlayFS" ]; then
-        if ! load_fstype overlay; then
-            if [ "$OverlayFS" = required ]; then
-                Die "OverlayFS is required but not available."
-                exit 1
-            fi
-            ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.overlayfs=0"
-            m='OverlayFS is not available; using temporary Device-mapper overlay.'
-            info "$m"
-            unset -v OverlayFS setup
-        fi
-    fi
 
     if [ ! "$setup" ] || [ "$readonly_overlay" ]; then
         if [ "$setup" ]; then

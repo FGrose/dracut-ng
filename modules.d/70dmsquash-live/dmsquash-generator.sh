@@ -4,7 +4,7 @@ command -v getarg > /dev/null || . /lib/dracut-lib.sh
 
 [ -z "$root" ] && root=$(getarg root=)
 
-# support legacy syntax of passing liveimg and then just the base root
+# support legacy syntax of passing rd.live.image and then just the base root
 if getargbool 0 rd.live.image; then
     liveroot="live:$root"
 fi
@@ -17,7 +17,7 @@ fi
 
 case "$liveroot" in
     live:LABEL=* | LABEL=* | live:UUID=* | UUID=* | live:PARTUUID=* | PARTUUID=* | live:PARTLABEL=* | PARTLABEL=*)
-        root="live:$(label_uuid_to_dev "${root#live:}")"
+        root=live:$(label_uuid_to_dev "${root#live:}")
         rootok=1
         ;;
     live:CDLABEL=* | CDLABEL=*)
@@ -47,6 +47,12 @@ GENERATOR_DIR="$2"
 
 if load_fstype overlay; then
     OverlayFS="$(getarg rd.overlayfs -d rd.live.overlay.overlayfs)" && {
+        getargbool 0 rd.live.overlay || {
+            # For OverlayFS on a regular block root device:
+            case "${OverlayFS:=os_rootfs}" in
+                1) OverlayFS=os_rootfs ;;
+            esac
+        }
         case "${OverlayFS:=LiveOS_rootfs}" in
             0 | no | off) unset -v 'OverlayFS' ;;
             1) OverlayFS=LiveOS_rootfs ;;
@@ -63,10 +69,10 @@ fi
     if [ "$OverlayFS" ]; then
         getargbool 0 rd.overlayfs.readonly -d rd.live.overlayfs.readonly && readonly_overlay="--readonly"
         basedirs=lowerdir="${readonly_overlay:+/run/overlayfs-r:}"/run/rootfsbase
-        echo "What=LiveOS_rootfs"
+        echo "What=$OverlayFS"
         echo "Options=${basedirs},upperdir=/run/overlayfs,workdir=/run/ovlwork"
         echo "Type=overlay"
-        _dev=LiveOS_rootfs
+        _dev="$OverlayFS"
     else
         echo "What=/dev/mapper/live-rw"
         ROOTFLAGS="$(getarg rootflags)" && echo "Options=${ROOTFLAGS}"
