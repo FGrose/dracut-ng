@@ -64,6 +64,11 @@ rootfstype=ext4
     _/etc/fstab_ of the real root will be parsed for special mount options and
     mounted accordingly.
 
+**rd.ovl.flags=**__<mount options>__::
+    specify additional mount options for the partition bearing the root
+    filesystem OverlayFS overlay. If not set, _/etc/fstab_ will be parsed for
+    special mount options and mounted accordingly.
+
 **ro**::
     force mounting _/_ and _/usr_ (if it is a separate device) read-only.  If
     none of ro and rw is present, both are mounted according to _/etc/fstab_.
