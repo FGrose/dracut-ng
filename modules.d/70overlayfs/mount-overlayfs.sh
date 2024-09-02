@@ -14,4 +14,4 @@ getargbool 0 rd.overlay.readonly -d rd.live.overlayfs.readonly && readonly_overl
 basedirs=lowerdir=${readonly_overlay:+/run/overlayfs-r:}/run/rootfsbase
 
 strstr "$(cat /proc/mounts)" LiveOS_rootfs \
-    || mount -t overlay LiveOS_rootfs -o "$ROOTFLAGS,$basdirs",upperdir=/run/overlayfs,workdir=/run/ovlwork "$NEWROOT"
+    || mount -t overlay LiveOS_rootfs -o $basdirs",upperdir=/run/overlayfs,workdir=/run/ovlwork "$NEWROOT"
