@@ -164,7 +164,7 @@ do_live_overlay() {
             mount -o remount,rw "$p_Partition"
             mount --bind "$devmnt" "$mntDir"
         else
-            mount -n -t auto "$p_Partition" "$mntDir" || :
+            mount -n -t "${fsType:-auto}" ${ovlptFlags:+-o $ovlptFlags} "$p_Partition" "$mntDir" || :
         fi
         if [ -f "$mntDir$ovlpath" ] && [ -w "$mntDir$ovlpath" ]; then
             OVERLAY_LOOPDEV=$(losetup -f --show ${readonly_overlay:+-r} "$mntDir$ovlpath")
@@ -414,8 +414,6 @@ if [ -n "$reloadsysrootmountunit" ]; then
     systemctl daemon-reload
 fi
 
-ROOTFLAGS="$(getarg rootflags)"
-
 if [ "$OverlayFS" = required ]; then
     echo rd.overlay > /etc/cmdline.d/20-dmsquash-need-overlay.conf
 fi
@@ -435,8 +433,7 @@ if [ -n "$OverlayFS" ]; then
     fi
 else
     if [ -z "${DRACUT_SYSTEMD-}" ]; then
-        [ -n "$ROOTFLAGS" ] && ROOTFLAGS="-o $ROOTFLAGS"
-        printf 'mount %s /dev/mapper/live-rw %s\n' "$ROOTFLAGS" "$NEWROOT" > "$hookdir"/mount/01-$$-live.sh
+        printf 'mount %s /dev/mapper/live-rw %s\n' "${rflags:+-o $rflags}" "$NEWROOT" > "$hookdir"/mount/01-$$-live.sh
     fi
 fi
 [ -e "$SQUASHED" ] && umount -l /run/initramfs/squashfs

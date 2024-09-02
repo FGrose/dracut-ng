@@ -122,8 +122,9 @@ prep_Partition() {
     mkfs_config "${fsType:=ext4}" LiveOS_persist $((partitionEnd - partitionStart + 1)) "${extra_attrs}"
     create_Filesystem "$fsType" "$p_Partition"
 
-    mount -m -t "${fsType}" ${ROOTFLAGS:+-o $ROOTFLAGS} "${p_Partition}" "${mntDir:=/run/initramfs/LiveOS_persist}"
-}
+    ovlptFlags="$(getarg rd.ovl.flags)"
+
+    mount -m -t "${fsType}" ${ovlptFlags:+-o $ovlptFlags} "${p_Partition}" "${mntDir:=/run/initramfs/LiveOS_persist}"
 
     mkdir -p "${mntDir}/${live_dir}/ovlwork" "$mntDir/$ovlpath"
     umount "$mntDir"
