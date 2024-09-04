@@ -71,7 +71,7 @@ getargbool 0 rd.overlay -d rd.live.overlay.overlayfs && OverlayFS=yes
     else
         echo "What=/dev/mapper/live-rw"
         ROOTFLAGS="$(getarg rootflags)" && echo "Options=${ROOTFLAGS}"
-        _dev=$'dev-mapper-live\\x2drw'
+        _dev='dev-mapper-live\x2drw'
     fi
 } > "$GENERATOR_DIR"/sysroot.mount
 
