@@ -236,40 +236,10 @@ do_live_overlay() {
         if [ -n "$setup" ] || [ -n "$overlay_no_user_confirm_prompt" ]; then
             warn "Using temporary overlay."
         elif [ "$p_Partition" ] && [ "$ovlpath" ]; then
-            [ -z "$m" ] \
-                && m='   Unable to find a persistent overlay; using a temporary one.'
-            m="$m"'
-      All root filesystem changes will be lost on shutdown.
-         Press [Enter] to continue.'
-            printf "\n\n\n\n%s\n\n\n" "${m}" > /dev/kmsg
-            if [ -n "${DRACUT_SYSTEMD-}" ]; then
-                if type plymouth > /dev/null 2>&1 && plymouth --ping; then
-                    if getargbool 0 rhgb || getargbool 0 splash; then
-                        m='>>>
->>>
->>>
-
-
-'"$m"
-                        m="${m%n.*}"'n.
-
-
-<<<
-<<<
-<<<'
-                        plymouth display-message --text="${m}"
-                    else
-                        plymouth ask-question --prompt="${m}" --command=true
-                    fi
-                else
-                    m=">>>$(printf '%s' "$m" | tr -d '\n')  <<<"
-                    systemd-ask-password --timeout=0 "${m}"
-                fi
-            else
-                type plymouth > /dev/null 2>&1 && plymouth --ping && plymouth --quit
-                printf '\n\n%s' "$m"
-                read -r _
-            fi
+            prompt_message \
+                '   Unable to find a persistent overlay; using a temporary one.' \
+                '  All root filesystem changes will be lost on shutdown.' \
+                '  Press [Enter] to continue.'
         fi
         if [ -n "$OverlayFS" ]; then
             if [ -n "$readonly_overlay" ] && ! [ -h /run/overlayfs-r ]; then
