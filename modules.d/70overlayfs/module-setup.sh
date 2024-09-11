@@ -15,6 +15,9 @@ installkernel() {
 
 install() {
     dracut_module_included dmsquash-live || {
+        if dracut_module_included "systemd"; then
+            inst_script "$moddir/overlayfs-generator.sh" "$systemdutildir"/system-generators/dracut-overlayfs-generator
+        fi
         inst_hook cmdline 30 "$moddir/parse-overlayfs.sh"
         inst_script "$moddir/root-overlayfs.sh" "/sbin/root-overlayfs"
     }
