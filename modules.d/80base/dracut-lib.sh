@@ -106,6 +106,36 @@ vinfo() {
     done
 }
 
+# Interrupt boot with a 3-line message $1 $2 $3.
+prompt_message() {
+    local a=$1
+    local b=$2
+    local c=$3
+    local n='
+'
+    printf "\n\n\n\n%s\n    %s\n       %s\n\n\n" "$a" "$b" "$c" > /dev/kmsg
+    if [ "${DRACUT_SYSTEMD-}" ]; then
+        if type plymouth > /dev/null 2>&1 && plymouth --ping; then
+            if getargbool 0 rhgb || getargbool 0 splash; then
+                plymouth display-message \
+                    --text=">>>$n>>>$n>>>$n$n$n$a$n    $b$c"
+            else
+                plymouth ask-question --prompt="$a$b$c" --command=true
+            fi
+        else
+            systemd-ask-password --timeout=0 "$a$n    $b$n        $c"
+        fi
+    else
+        type plymouth > /dev/null 2>&1 && plymouth --ping && {
+            plymouth deactivate
+            local plymouth_deactivated=1
+        }
+        printf '\n\n%s\n    %s\n       %s\n\n\n' "$a" "$b" "$c"
+        read -r _
+        [ "$plymouth_deactivated" ] && plymouth reactivate
+    fi
+}
+
 killall_proc_mountpoint() {
     local _pid
     local _killed=0
