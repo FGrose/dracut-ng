@@ -1,6 +1,11 @@
 #!/bin/sh
 # partition-lib.sh: utilities for partition editing
 
+plymouth --ping > /dev/null 2>&1 && {
+    export PLYMOUTH=PLYMOUTH
+    . /lib/plymouth-lib.sh
+}
+
 run_parted() {
     LC_ALL=C flock "$1" parted --script "$@"
 }
@@ -21,6 +26,74 @@ get_partitionTable() {
     }
 }
 
+# Prompt for new partition size.
+prompt_for_size() {
+    local - OLDIFS space warn sz sz_max
+    set +x
+    [ "$partitionTable" ] || get_partitionTable "$diskDevice"
+    space=$(lsblk -o PATH,MODEL,PARTLABEL,LABEL,FSTYPE,SIZE "$diskDevice")
+    OLDIFS="$IFS"
+    IFS='
+'
+    # shellcheck disable=SC2086
+    set -- $partitionTable
+    IFS=':'
+    # shellcheck disable=SC2046
+    set -- $(eval printf '%s:' $\{$#\})
+    sz_max=$((${4%B} >> 30))
+    IFS="$OLDIFS"
+    # shellcheck disable=SC2086
+    set -- $partitionTable
+    IFS=':'
+    # shellcheck disable=SC2046
+    set -- $(eval printf '%s:' $\{$#\})
+    sz_max=$((${4%B} >> 30))
+    IFS="$OLDIFS"
+    warn='`
+`   Enter a size in GiBytes for the new persistence partition.
+`
+`   Below is the current partitioning.
+`'
+    [ "$PLYMOUTH" ] || _list="
+$warn
+$space
+\`
+\`   $sz_max GiB is the upper limit.
+Enter a whole number for the partition size here: 
+"
+    {
+        flock -s 9
+        while :; do
+            if [ "$PLYMOUTH" ]; then
+                IFS='
+' plym_write "$warn
+$space
+\`
+\`   $sz_max GiB is the upper limit.
+Press <Escape> to toggle to/from the partition display."
+                sz=$(plymouth ask-question --prompt='Enter a whole number for the partition size here')
+            elif [ "${DRACUT_SYSTEMD-}" ]; then
+                echo "${_list%
+*}" > /dev/kmsg
+                sz=$(systemd-ask-password --echo=yes --timeout=0 "Enter a whole number (GiB) for the partition size here (max=$sz_max GiB): ")
+            else
+                read -p "$_list" -r sz
+            fi
+            [ "$sz" -gt "$sz_max" ] && echo "
+                That's too large..." && continue
+            case "$sz" in
+                '') continue ;;
+                break) break ;;
+                *[!0-9]* | 0[0-9]* | 0*) continue ;;
+                *) break ;;
+            esac
+        done
+    } 9> /.console_lock
+    echo "$sz"
+    sizeGiB="$sz"
+    return 0
+}
+
 parse_cfgArgs() {
     local -
     set -x
@@ -39,10 +112,18 @@ parse_cfgArgs() {
                 break
                 # ea,extra attribute,s must be the final arguments.
                 ;;
-            [!0-9]* | 0*)
+            PROMPTSZ)
+                # Assigns sizeGiB.
+                prompt_for_size "$1"
+                ;;
+            *[!0-9]* | 0*)
                 # Anything but a positive integer:
                 [ "$1" = auto ] || p_Partition=$(label_uuid_to_dev "${1%%:*}")
                 strstr "$1" ":" && ovlpath=${1##*:}
+                ;;
+            *)
+                # any positive integer:
+                sizeGiB=$1
                 ;;
         esac
         shift
@@ -100,12 +181,16 @@ prep_Partition() {
     partitionStart=$freeSpaceStart
     optimize "$partitionStart" partitionStart
 
-    if [ $partitionStart -gt $((szDisk - (1 << 28))) ]; then
+    if [ $partitionStart -gt $((szDisk - 268435456)) ]; then
         # Allow at least 256 MiB for persistence partition.
         info "Skipping overlay creation: there is less than 256 MiB of free space after the last partition"
         return 1
     fi
-    partitionEnd=$((szDisk - (1 << 20) ))
+    local freeSpaceEnd
+    freeSpaceEnd=$((szDisk - 1048576))
+    sizeGiB=${sizeGiB:+$((sizeGiB << 30))}
+    partitionEnd="$((partitionStart + ${sizeGiB:-$szDisk} - 512))"
+    [ "$partitionEnd" -gt "$freeSpaceEnd" ] && partitionEnd=$freeSpaceEnd
 
     p_Partition=$(aptPartitionName "${diskDevice}" "$newPtNbr")
 
