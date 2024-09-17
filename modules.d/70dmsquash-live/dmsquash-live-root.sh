@@ -70,14 +70,6 @@ getargbool 0 rd.live.ram && live_ram=yes
 getargbool 0 rd.writable.fsimg && writable_fsimg=yes
 overlay_size=$(getarg rd.live.overlay.size=) || overlay_size=32768
 getargbool 0 rd.live.overlay.thin && thin_snapshot=yes
-rd_overlay=$(get_rd_overlay) && {
-    IFS=, parse_cfgArgs "$rd_overlay"
-
-    # Set default ovlpath, if not specified.
-    [ "$ovlpath" = auto ] && unset -v 'ovlpath'
-    : "${ovlpath:=/"$live_dir"/overlay-"$label"-"$uuid"}"
-    str_starts "$ovlpath" '/' || ovlpath=/"$ovlpath"
-}
 
 # CD/DVD/USB media check
 rd_live_check() {
@@ -101,6 +93,17 @@ rd_live_check() {
     }
 }
 
+rd_overlay=$(get_rd_overlay) && {
+    IFS=, parse_cfgArgs "$rd_overlay"
+
+    # Set default ovlpath, if not specified.
+    [ "$ovlpath" = auto ] && unset -v 'ovlpath'
+    : "${ovlpath:=/"$live_dir"/overlay-"$label"-"$uuid"}"
+    str_starts "$ovlpath" '/' || ovlpath=/"$ovlpath"
+}
+
+[ "$partitionTable" ] || get_partitionTable "$diskDevice"
+
 case "$livedev_fstype" in
     iso9660 | udf)
         rd_live_check "${diskDevice:-$livedev}"
@@ -115,8 +118,6 @@ case "$livedev_fstype" in
         liverw=rw
         ;;
 esac
-
-[ "$partitionTable" ] || get_partitionTable "$diskDevice"
 
 # mount the backing of the live image first
 mkdir -m 0755 -p /run/initramfs/live
