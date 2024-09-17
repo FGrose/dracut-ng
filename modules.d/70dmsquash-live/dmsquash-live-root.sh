@@ -129,6 +129,8 @@ rd_overlay=$(get_rd_overlay) && {
     str_starts "$ovlpath" '/' || ovlpath=/"$ovlpath"
 }
 
+[ "$partitionTable" ] || get_partitionTable "$diskDevice"
+
 case "$livedev_fstype" in
     iso9660 | udf)
         rd_live_check "${diskDevice:-$livedev}"
@@ -143,8 +145,6 @@ case "$livedev_fstype" in
         liverw=rw
         ;;
 esac
-
-[ "$partitionTable" ] || get_partitionTable "$diskDevice"
 
 # mount the backing of the live image first
 mkdir -m 0755 -p /run/initramfs/live
