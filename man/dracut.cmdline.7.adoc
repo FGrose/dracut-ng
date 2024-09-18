@@ -1355,7 +1355,7 @@ By default, this is __squashfs.img__.
 Copy the complete image to RAM and use this for booting. This is useful
 when the image resides on, e.g., a DVD which needs to be ejected later on.
 
-**rd.live.overlay=**{[{__<sizeGiB>__|PROMPTSZ}[,__<fstype>__[,__<devspec>__[:{__<pathspec>__|auto}[,ea=__<extra_attr__,__s>__]]]]]|none}::
+**rd.live.overlay=**{[{__<sizeGiB>__|PROMPTSZ}[,__<fstype>__[,recreate=[__<devspec>__][,__<devspec>__[:{__<pathspec>__|auto}[,ea=__<extra_attr__,__s>__]]]]]]|none}::
 Manage the usage of a persistent overlay.
 +
 --
@@ -1375,6 +1375,13 @@ partition size in whole gigabytes.
 *_<fstype>_* for a new partition may be [*btrfs*|*ext*[*432*]|*f2fs*|*xfs*];
 the default is *ext4* for maximum availability, although *f2fs* or *btrfs* may
 be preferred for greater endurance on common flash storage devices.
+* *_recreate=_*[_<devspec>_] specify the destruction and recreation of a
+partition no larger than the contiguous free space at the one destroyed. If no
+_<devspec>_ is provided, the partition named __LiveOS_persist__ on the root
+bearing disk will be targeted. Useful for changing the partition size or
+filesystem type or attributes. *All* saved content in the partition is lost.
+Compare: **rd.overlayfs.reset** will only destroy the OverlayFS upper
+directory and then recreate an empty replacement.
 * *_<devspec>_* specifies the path to a device with a mountable filesystem.
 * *_<pathspec>_* is a path within the *_<devspec>_* filesystem to either
 ** a file (that is loop mounted for a Device-mapper overlay) or
