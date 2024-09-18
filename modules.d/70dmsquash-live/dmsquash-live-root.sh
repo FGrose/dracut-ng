@@ -133,6 +133,9 @@ rd_live_check() {
     }
 }
 
+[ "$partitionTable" ] || get_partitionTable "$diskDevice"
+get_LiveOS_persist
+
 case "$livedev_fstype" in
     iso9660 | udf)
         rd_live_check "${diskDevice:-$livedev}"
@@ -156,8 +159,6 @@ rd_live_overlay=$(getarg rd.live.overlay) && {
     : "${ovlpath:=/"$live_dir"/overlay-"$label"-"$uuid"}"
     str_starts "$ovlpath" '/' || ovlpath=/"$ovlpath"
 }
-
-[ "$partitionTable" ] || get_partitionTable "$diskDevice"
 
 # mount the backing of the live image first
 mkdir -m 0755 -p /run/initramfs/live
