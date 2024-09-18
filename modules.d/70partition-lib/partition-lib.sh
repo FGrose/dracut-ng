@@ -26,6 +26,66 @@ get_partitionTable() {
     }
 }
 
+# for partitionTable ptNbr/leading_field_string_pattern=$1
+pt_row() {
+    local b
+    # shellcheck disable=SC2295 # pattern matching desired
+    b=${partitionTable#"${partitionTable%
+$1:*}"
+}
+    if [ "$1" = 1 ]; then
+        # For first partition, remove any leading free space record.
+        b=${partitionTable#*free;
+1:}
+        if [ "$b" = "$partitionTable" ]; then
+            # greedy tail removal
+            # shellcheck disable=SC2295 # pattern matching desired
+            b=${partitionTable#"${partitionTable%%
+$1:*}"
+}
+        else
+            b="1:$b"
+        fi
+    fi
+    [ "$b" = "$partitionTable" ] || echo "${b%%
+*}"
+}
+
+parse_pt_row() {
+    [ ! "$@" ] || {
+        # shellcheck disable=SC2068
+        set -- $@
+        ptNbr=$1
+        ptStart=${2%B}
+        ptEnd=${3%B}
+        ptLength=${4%B}
+        ptFStype=$5
+        ptLabel=$6
+        ptFlags=${7%;}
+    }
+}
+
+# $@ - $newptCmd
+get_newptNbr() {
+    set -- "$@"
+    IFS=: parse_pt_row "$(pt_row "?*:$5")"
+    newptNbr="$ptNbr"
+}
+
+# Find the overlay's partition and assign variables & link.
+get_LiveOS_persist() {
+    local -
+    set -x
+    p_Partition=''
+    ptNbr=''
+    IFS=: parse_pt_row "$(pt_row "*:LiveOS_persist")"
+    [ "$ptNbr" ] && {
+        p_Partition=$(aptPartitionName "$diskDevice" "$ptNbr")
+        ln -sf "$p_Partition" /run/initramfs/p_pt
+        p_ptfsType="$ptFStype"
+    }
+}
+
 # Prompt for new partition size.
 prompt_for_size() {
     local - OLDIFS space warn sz sz_max
@@ -106,6 +166,13 @@ parse_cfgArgs() {
             '' | btrfs | ext[432] | f2fs | xfs)
                 p_ptfsType=${1:-${p_ptfsType:-ext4}}
                 ;;
+            recreate=*)
+                removePt="${1#recreate=}"
+                removePt=$(readlink -f "$(label_uuid_to_dev "$removePt")" 2> /dev/kmsg)
+                [ -b "$removePt" ] || {
+                    [ "$p_Partition" ] && removePt="$p_Partition"
+                }
+                ;;
             ea=?*)
                 extra_attrs="${*}"
                 extra_attrs=${extra_attrs#ea=}
@@ -131,9 +198,10 @@ parse_cfgArgs() {
 }
 
 prep_Partition() {
-    [ "$p_Partition" ] && [ ! -b "$p_Partition" ] \
+    local n removePtNbr freeSpaceStart freeSpaceEnd byteMax
+    [ "$p_Partition" ] && ! [ -b "$p_Partition" ] \
         && Die "The specified persistence partition, $p_Partition, is not recognized."
-    if [ "$p_Partition" ]; then
+    if [ "$p_Partition" ] && ! [ "$removePt" ]; then
         info "Skipping overlay creation: a persistence partition already exists."
         rd_live_overlay="$p_Partition"
         ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.live.overlay=$p_Partition rd.live.overlay.overlayfs"
@@ -142,12 +210,37 @@ prep_Partition() {
         info "Skipping overlay creation: kernel command line parameter 'rd.live.overlay' is not set."
         return 1
     fi
+    freeSpaceEnd=$((szDisk - 1048576))
+    [ "$removePt" ] && {
+        [ "${removePt#"$diskDevice"}" = "$removePt" ] && {
+            # removePt NOT on diskDevice.
+            # shellcheck disable=SC2046
+            set -- $(lsblk -nrpo PKNAME,OPT-IO "$removePt")
+            diskDevice="$1"
+            optimalIO="$2"
+            get_partitionTable "$diskDevice"
+        }
+        removePtNbr="${removePt#"$diskDevice"}"
+        removePtNbr="${removePtNbr#p}"
+        IFS=: parse_pt_row "$(pt_row "$removePtNbr")"
+        freeSpaceStart=$ptStart
+        # Next row has free space?
+        IFS=: parse_pt_row "$(pt_row "1:$((ptEnd + 1))B")"
+        freeSpaceEnd=$ptEnd
+        # Previous row has free space?
+        IFS=: parse_pt_row "$(pt_row "1:*B:$((freeSpaceStart - 1))B")"
+        [ "$ptStart" -gt "$freeSpaceStart" ] || freeSpaceStart=$ptStart
+        [ $((freeSpaceEnd - freeSpaceStart + 1)) -gt 268435456 ] || {
+            warn "Skipping partition recreation: less than 256 MiB of space would be available."
+            return 1
+        }
+        byteMax=$freeSpaceEnd
+    }
     OLDIFS="$IFS"
     IFS='
 '
     # shellcheck disable=SC2086
     set -- $partitionTable
-
     IFS=:
     # shellcheck disable=SC2046
     set -- $(eval printf '%s:' $\{$(($# - 1))\})
@@ -158,15 +251,13 @@ prep_Partition() {
         Gap1)
             # Remove artifactual partition in Fedora 37-41 distribution .iso
             removePtNbr=$1
+            freeSpaceStart=${2%B}
             ;;
     esac
-    if [ "$removePtNbr" ]; then
-        freeSpaceStart=${2%B}
-        newPtNbr=$1
-    else
+    [ "$removePt" ] || {
         freeSpaceStart=$((${3%B} + 1))
-        newPtNbr=$(($1 + 1))
-    fi
+        byteMax=$((szDisk - 268435456))
+    }
 
     # Make optimalIO alignment at least 4 MiB.
     #   See https://www.gnu.org/software/parted/manual/parted.html#FOOT2 .
@@ -181,25 +272,34 @@ prep_Partition() {
     partitionStart=$freeSpaceStart
     optimize "$partitionStart" partitionStart
 
-    if [ $partitionStart -gt $((szDisk - 268435456)) ]; then
+    if [ "$partitionStart" -gt "$byteMax" ]; then
         # Allow at least 256 MiB for persistence partition.
-        info "Skipping overlay creation: there is less than 256 MiB of free space after the last partition"
+        warn "Skipping partition creation: less than 256 MiB of space is available."
         return 1
     fi
-    local freeSpaceEnd
-    freeSpaceEnd=$((szDisk - 1048576))
     sizeGiB=${sizeGiB:+$((sizeGiB << 30))}
     partitionEnd="$((partitionStart + ${sizeGiB:-$szDisk} - 512))"
     [ "$partitionEnd" -gt "$freeSpaceEnd" ] && partitionEnd=$freeSpaceEnd
 
-    p_Partition=$(aptPartitionName "${diskDevice}" "$newPtNbr")
+    run_parted "$diskDevice" --fix ${removePtNbr:+rm $removePtNbr} \
+        ${newptCmd:=--align optimal mkpart LiveOS_persist "${partitionStart}B" "${partitionEnd}B"}
 
     # LiveOS persistence partition type
-    run_parted "$diskDevice" --fix ${removePtNbr:+rm $removePtNbr} \
-        --align optimal mkpart LiveOS_persist "${partitionStart}B" "${partitionEnd}B" \
-        type "$newPtNbr" ccea7cb3-70ba-4c31-8455-b906e46a00e2 \
-        set "$newPtNbr" no_automount on
+    newptType=ccea7cb3-70ba-4c31-8455-b906e46a00e2
+
+    # Set new partition type with command - $@
+    set_pt_type() {
+        get_partitionTable "$diskDevice"
+        get_newptNbr "$@"
+        run_parted "$diskDevice" type "$newptNbr" "$newptType" \
+            set "$newptNbr" no_automount on
+    }
+    # shellcheck disable=SC2086
+    set_pt_type $newptCmd
+
+    p_Partition=$(aptPartitionName "$diskDevice" "$newPtNbr")
     udevadm trigger --name-match "$p_Partition" --action add --settle > /dev/null 2>&1
+    ln -sf "$p_Partition" /run/initramfs/p_pt
 
     set_FS_options "${fsType:-ext4}"
     mkfs_config "${p_ptfsType:=ext4}" LiveOS_persist $((partitionEnd - partitionStart + 1)) "${extra_attrs}"
