@@ -117,24 +117,126 @@ resume=UUID=3f5ad593-4546-4a94-a374-bcfb68aa11f7
 
 iso-scan/filename
 ~~~~~~~~~~~~~~~~~
-
-Mount all mountable devices and search for ISO pointed by the argument. When
-the ISO is found set it up as a loop device. Device containing this ISO
-image will stay mounted at /run/initramfs/isoscandev.
-Using iso-scan/filename with a Fedora/Red Hat/CentOS Live iso should just work
-by copying the original kernel cmdline parameters.
 Requires the dracut 'dmsquash-live' module.
+Using the command `loopback <devicename> </path/to/imagefile>`, the GRUB
+boot loader can make a device identified by `<devicename>` from an
+image file on the boot or other specified device. This allows GRUB to load
+the boot kernel and initramfs from the device made from the image file.
+
+**iso-scan/filename=**__[<devspec>__:]__<filepath>__::
+    _dracut_ must independently identify the device holding the image file
+    through its _dmsquash-live/iso-scan.sh_ code using the +
+    *_iso-scan/filename_* parameter.
+    * *_<devspec>_* may be specified as
+    *_{`block:|UUID=|PARTUUID=|LABEL=|PARTLABEL=`}_*
++
+NOTE: Without the optional *_<devspec>_*, all mountable devices will be
+searched in `/dev/disk/by-uuid/*` order for the file specified by
+*_<filepath>_*.  The first matching file is set up as a loop device.
++
+    * *_<filepath>_* specifies the image file for loop setup by _dracut_ to
+    access the root filesystem within.
+
+The disk device containing the .iso file will stay mounted after booting at
+`/run/initramfs/isoscandev` unless *_rd.live.ram_* is requested, in which
+case, the loop device and mount are detached so as to simplify installation to
+the parent disk, if desired.
+
+Using *_iso-scan/filename_* with a Fedora/Red Hat/CentOS Live iso should just
+work by copying the original kernel cmdline parameters.
+
+The GRUB boot loader will need its appropriate modules for the partition and
+filesystem bearing the .iso file, such as __part_gpt__ or __part_msdos__ and
+_ext2_, _btrfs_, _f2fs_, or _xfs_ and _iso9660_ for the iso filesystem.
+
+In the first example below, the .iso image file is stored in the `/isos/`
+directory of the boot partition so that GRUB can address the isofile for loop
+setup to reach the linux kernel and initrd initramfs.
+
+NOTE: The filepaths below to the linux kernel and initrd will differ depending
+on the OS distribution and vintage. For example, Fedora 37-41 used paths
+`/images/pxeboot/vmlinuz` & `/images/pxeboot/initrd.img`.
 
 [listing]
-.Example
+.GRUB menuentry example employing the legacy all device scan.
 --
-menuentry 'Live' --class gnu-linux --class gnu --class os {
-    set isolabel=Live-x86_64
-    set isofile="/boot/iso/Live-x86_64.iso"
-    loopback loop $isofile
-    linux (loop)/isolinux/vmlinuz0 boot=isolinux iso-scan/filename=$isofile root=live:LABEL=$isolabel ro rd.live.image quiet
-    initrd (loop)/isolinux/initrd0.img
+menuentry 'Live .iso' --class gnu-linux --class gnu --class os {
+  insmod part_gpt
+  insmod ext2
+  insmod iso9660
+  insmod loopback
+  set isofile=/isos/Live.x86_64.iso
+  loopback loop "$isofile"
+  linux (loop)/boot/x86_64/loader/linux iso-scan/filename=$isofile root=live:/dev/loop0p1 ro quiet splash
+  initrd (loop)/boot/x86_64/loader/initrd
 }
+--
+In the following examples, the filesystem uuid of the storage partition
+is set to the variable `dev_uuid`, enabling direct addressing of the isofile.
+NOTE: This requires an initramfs built with an updated version of dracut.
+
+[listing]
+.grub.cfg script example for dynamic menuentry generation - requires GRUB module _regexp_ to be compiled in or available. Also accommodates multiple initrd images, if employed.
+--
+insmod part_gpt
+insmod ext2
+insmod iso9660
+insmod regexp
+insmod loopback
+set dev_uuid=6c8468d0-b6fe-4bee-87a3-f5e38ef4f5fc
+search --no-floppy --set dev -u $dev_uuid
+for file in ($dev)/isos/*.iso; do
+  regexp -s 2:isofile '^(\(.*\))?(\/isos\/.*)$' "$file"
+  menuentry "Start ${isofile}" "${isofile}" "$dev" {
+    isofile="$2"
+    dev="$3"
+    loopback loop ($dev)/isos/"$isofile"
+    initrds=''
+    for f in (loop)/boot/x86_64/loader/initrd*; do
+      initrds="$initrds $f"
+    done
+    linux (loop)/boot/x86_64/loader/linux root=live:/dev/loop0p1 \
+      iso-scan/filename=UUID=${dev_uuid}:/isos/"$isofile" ro quiet splash
+    initrd $initrds
+    loopback -d loop
+  }
+done
+--
+[listing]
+.grub.cfg script example of dynamic menuentry generation for any `/isos/<isoname>.iso` on devices accessible at early boot. Requires GRUB modules _regexp_ and _probe_.
+--
+insmod part_gpt
+insmod part_msdos
+insmod ext2
+insmod iso9660
+insmod probe
+insmod regexp
+insmod loopback
+for dev in (*); do
+  if [ -d $dev/isos -a -f $dev/isos/*.iso ]; then
+    probe --set dev_uuid --fs-uuid "$dev"
+    for file in ($dev)/isos/*.iso; do
+      regexp -s 2:isofile '^(\(.*\))?\/isos\/(.*)$' "$file"
+      if ! loopback loop "$file"; then continue; fi
+      if [ -d (loop)/LiveOS ]; then
+        menuentry "Start a transient ${isofile}" "$dev" "$dev_uuid" "${isofile}" {
+        dev="$2"
+        dev_uuid="$3"
+        isofile="$4"
+        loopback loop ($dev)/isos/"$isofile"
+        initrds=''
+        for f in (loop)/boot/x86_64/loader/initrd*; do
+          initrds="$initrds $f"
+        done
+        linux (loop)/boot/x86_64/loader/linux root=live:/dev/loop0p1 \
+          iso-scan/filename=UUID="$dev_uuid":/isos/"$isofile" ro quiet splash
+        initrd $initrds
+        loopback -d loop
+      }
+      else continue; fi
+    done
+  else continue; fi
+done
 --
 
 Misc

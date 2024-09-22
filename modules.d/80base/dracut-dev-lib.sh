@@ -46,6 +46,26 @@ aptPartitionName() {
     esac
 }
 
+# Trigger a disk or partition, $1, having property [LABEL|UUID|PARTLABEL|PARTUUID]=*
+#   for action, $2, [add|remove|change|move|online|offline|bind|unbind] - default: add
+label_uuid_udevadm_trigger() {
+    local _dev _property
+    _dev="${1#block:}"
+    case "$_dev" in
+        LABEL=* | UUID=*)
+            _property=ID_FS_${_dev}
+            ;;
+        PARTLABEL=*)
+            _property=ID_PART_ENTRY_NAME=${_dev#PARTLABEL=}
+            ;;
+        PARTUUID=*)
+            _property=ID_PART_ENTRY_${_dev#PART}
+            ;;
+    esac
+    udevadm trigger --subsystem-match=block --action="${2:-add}" ${_property:+--property-match=$_property} --settle
+}
+
+
 # get a systemd-compatible unit name from a path
 # (mimics unit_name_from_path_instance())
 dev_unit_name() {
