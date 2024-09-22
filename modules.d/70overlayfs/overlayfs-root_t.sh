@@ -1,5 +1,6 @@
 #!/bin/sh -x
 
+chcon -t bin_t /usr/bin || setenforce Permissive
 # Change SELinux context type for root & OverlayFS directories on virtual filesystems.
 chcon -t root_t / /run/overlayfs /run/ovlwork
 
@@ -12,3 +13,4 @@ chcon -h -t systemd_unit_file_t /usr/lib/systemd/system \
     /usr/lib/systemd/system/overlayfs-root_t.service \
     /usr/lib/systemd/system/local-fs-pre.target.wants \
     /usr/lib/systemd/system/local-fs-pre.target.wants/overlayfs-root_t.service
+setenforce Enforcing
