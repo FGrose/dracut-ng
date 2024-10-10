@@ -383,10 +383,14 @@ Press <Escape> to toggle to/from the partition display."
 }
 
 parse_cfgArgs() {
-    local -
-    set -x
-    # shellcheck disable=SC2068
-    set -- $@ # rd_live_overlay
+    local - ISS ptSpec
+    if strstr "$@" serial= ; then
+        # shellcheck disable=SC2046
+        set -- $(maskComma_inSerial "$@")
+    else
+        # shellcheck disable=SC2068
+        set -- $@ # rd_live_overlay
+    fi
     IFS=' 	
 '
     for _; do
@@ -399,6 +403,22 @@ parse_cfgArgs() {
                 removePt=$(readlink -f "$(label_uuid_to_dev "$removePt")" 2> /dev/kmsg)
                 [ -b "$removePt" ] || {
                     [ "$p_Partition" ] && removePt="$p_Partition"
+                }
+                ;;
+            serial=?*)
+                ISS=${1%%/serial/*}
+                diskDevice=$(ID_SERIAL_SHORT_to_disc "${ISS#serial=}")
+                ptSpec=${1#*/serial/}
+                [ "$ptSpec" ] && {
+                    case "$ptSpec" in
+                        *[!0-9]* | 0*)
+                            # Anything but a positive integer:
+                            p_Partition=$(label_uuid_to_dev "$ptSpec")
+                            ;;
+                        *)
+                            p_Partition=$(aptPartitionName "$diskDevice" "$partNbr")
+                            ;;
+                    esac
                 }
                 ;;
             ea=?*)
