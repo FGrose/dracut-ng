@@ -128,7 +128,7 @@ the boot kernel and initramfs from the device made from the image file.
     through its _dmsquash-live/iso-scan.sh_ code using the +
     *_iso-scan/filename_* parameter.
     * *_<devspec>_* may be specified as
-    *_{`block:|UUID=|PARTUUID=|LABEL=|PARTLABEL=`}_*
+    *{`block:|UUID=|PARTUUID=|LABEL=|PARTLABEL=|serial=<devserial>/serial/<partspec>`}*
     * *PROMPTPT* triggers an interactive menu for selecting the partition
     bearing the .iso file.
 NOTE: Without the optional *_<devspec>_*, all mountable devices will be
@@ -1250,6 +1250,14 @@ https://docs.kernel.org/filesystems/overlayfs.html#changes-to-underlying-filesys
 the OverlayFS mount source name to _<source_name>_ instead of the default
 _os_rootfs_.
 * *_<devspec>_* specifies the path to a device with a mountable filesystem.
+*_<devspec>_* may be in the form of
++
+{`serial=<devserial>/serial/<partspec>|UUID=?*|PARTUUID=?*|LABEL=?*|PARTLABEL=?*|/dev/?*`}
++
+serial=_<devserial>_/serial/_<partspec>_ specifies the ID_SERIAL_SHORT
+property value for the target disk device followed by `/serial/` and
+_<partspec>_, where _<partspec>_ is a numeric only partition number or one of
+the other _<devspec>_ specifications.
 * *_<pathspec>_* is a path within the *_<devspec>_* filesystem to a directory,
 which is symbolically linked to `/run/overlayfs` for a OverlayFS mount overlay.
 (A required sister directory `/<pathspec>/../ovlwork` is automatically made.)
@@ -1296,7 +1304,8 @@ Booting live images
 
 Requires the dracut 'dmsquash-live' module.
 Dracut offers multiple options for live booted images through the
-_dmsquash-live_ and _overlayfs_ modules.
+_dmsquash-live_ and _overlayfs_ modules augmented by _dmsquash-live-ntfs_,
+_livenet_, _squash_, & _partition-lib_ among other modules.
 
 =====================
 SquashFS or EROFS (read-only) base filesystem image:::
@@ -1382,7 +1391,7 @@ additional command line options are required other than
 the location of your squashed root filesystem.
 
 - The compressed SquashFS or EROFS image can be copied during boot to RAM at
-`/run/initramfs/squashed.img` by using the **rd.live.ram=1** option.
+`/run/initramfs/rorootfs.img` by using the **rd.live.ram=1** option.
 - A device with a persistent overlay can be booted read-only by using the
 **rd.overlay.readonly** option on the kernel command line.  This will
 either cause a temporary, writable overlay to be stacked over a read-only
@@ -1390,7 +1399,40 @@ snapshot of the root filesystem or the OverlayFS mount will use an additional
 lower layer with the root filesystem.
 --
 
-Uncompressed live filesystem image:::
+**rd.live.image**{[=__esp[=<sizeMiB>__]|,{__<devspec>__|PROMPTDK}]::
+This parameter without an argument supports the legacy syntax of passing just
+the base root filesystem partition **root=**__<path to blockdevice>__ instead
+of **root=**live:__<path to blockdevice>__ to indicate a live boot.
+With argument
+* *_esp[=<sizeMiB>]_* create a new EFI System Partition on the boot media with
+the size specified.  The existing ESP will be replaced by a copy in the new
+partition, and the source directory with the boot kernel and initrd files will
+be copied into the **rd.live.dir=**__<path>__ directory of the new ESP.  These
+files will be bind mounted onto their counterparts in the root filesystem /boot
+directory to facilitate programmatic updates.  The default *_<sizeMiB>_* is
+512 MiB for disks smaller than 32 GiB and another 256 MiB is added to the
+default per 16 GiB of end-of-disk free space.
++
+NOTE: When a target disk is partitioned by a **rd.live.overlay=** directive,
+a new, default ESP will be created automatically and the esp parameter can be
+omitted.
++
+This feature facilitates updating the image kernel version and installing
+multiple boot images or alternative initrd images on the boot device.
+* *_<devspec>_* specifies the path to a device with a mountable filesystem and
+is used to designate the target disk when a new installation is desired on an
+arbitrary disk.
+*_<devspec>_* may be in the form of
++
+{`serial=<devserial>/serial/<partspec>|UUID=?*|PARTUUID=?*|LABEL=?*|PARTLABEL=?*|/dev/?*`}
++
+serial=_<devserial>_/serial/[_<partspec>_] specifies the ID_SERIAL_SHORT
+property value for the target disk device followed by `/serial/` and optional
+_<partspec>_, where _<partspec>_ is a numeric only partition number or one of
+the other _<devspec>_ specifications.
+* *PROMPTDK* triggers an interactive menu for selecting the target disk.
+
+Uncompressed live filesystem image::
 When the live system was installed with the '--skipcompress' option of the
 __livecd-iso-to-disk__ installation script for Live USB devices, the root
 filesystem image, __rootfs.img__, is expanded on installation and no SquashFS
@@ -1403,7 +1445,7 @@ root filesystem is copied during boot to `/run/initramfs/rootfs.img` in the
 - If **rd.overlay=none** is provided as a kernel command line option,
 a writable, linear Device-mapper target is created on boot with no overlay.
 
-Writable filesystem image:::
+Writable filesystem image::
 The system will retrieve a compressed filesystem image, extract it to
 `/run/initramfs/fsimg/rootfs.img`, connect it to a loop device, create a
 writable, linear Device-mapper target at `/dev/mapper/live-rw`, and mount that
@@ -1480,22 +1522,32 @@ Enables debug output from the live boot process.
 **rd.live.check**::
 Requests a CD/DVD/USB media check with checkisomd5.
 
-**rd.live.dir=**__<dirname>__::
-Specifies the directory within the boot device where the squashfs.img or
-rootfs.img can be found.  By default, this is `LiveOS`.
+**rd.live.dir={**__<dirname>__|PROMPT}::
+* *_<dirname>_* specifies the directory within the boot device where the
+squashfs.img or rootfs.img can be found.  By default, this is `LiveOS`.
 +
-The creation of a new OverlayFS overlay can be specified by including a new
-**rd.live.dir=**__<dirname>__ on the kernel commandline.
+This directory name is also used as the parent directory name in the creation
+of a persistent overlay directory.
++
+The creation of a new OverlayFS overlay directory can be specified by including
+a new **rd.live.dir=**__<dirname>__ on the kernel commandline.
+* *PROMPT* may be entered to invoke an interactive dialog to specify the
+directory name for a new OverlayFS directory.
+
+**rd.live.rorootimg=**__<filename of SquashFS or EROFS image>__::
+Specifies the filename for a read-only image of the root filesystem.
+By default, this is __squashfs.img__.
 
 **rd.live.squashimg=**__<filename of SquashFS or EROFS image>__::
 Specifies the filename for a SquashFS or EROFS image of the root filesystem.
+_Deprecated_ use rd.live.rorootimg instead.
 By default, this is __squashfs.img__.
 
 **rd.live.ram=**1::
 Copy the complete image to RAM and use this for booting. This is useful
 when the image resides on, e.g., a DVD which needs to be ejected later on.
 
-**rd.live.overlay=**{[{__<size>__|PROMPTSZ}[,{__<fstype>__|PROMPTFS}[,recreate[=__<devspec>__][,__<devspec>__[:{__<pathspec>__|auto}[,ea=__<extra_attr__,__s>__]]]]]]|none}::
+**rd.overlay=**{[{__<size>__|PROMPTSZ}[,{__<fstype>__|PROMPTFS}[,recreate[=__<devspec>__][,__<devspec>__[:{__<pathspec>__|auto}[,ea=__<extra_attr__,__s>__]]]]]]|none}::
 Manage the usage of a persistent overlay.
 +
 * The parameter with no or any of the filesystem related or *_<size>_*
@@ -1515,6 +1567,12 @@ partition size in whole gigabytes.
 the default is *ext4* for maximum availability, although *f2fs* or *btrfs* may
 be preferred for greater endurance on common flash storage devices.
 * *PROMPTFS* may be entered to invoke a menu to select the filesystem type.
++
+NOTE: In an *_iso-scan/filename_* boot, if any of the above arguments are
+supplied without a *_<devspec>_* argument (such as in a mklabel boot), a comma—
+`,`—should precede or follow all these arguments to indicate that *_<devspec>_*
+is specified elsewhare.
++
 * *_recreate_*[=_<devspec>_] specify the destruction and recreation of a
 partition no larger than the contiguous free space at the one destroyed. If no
 _<devspec>_ is provided, the partition named __LiveOS_persist__ on the root
@@ -1528,6 +1586,14 @@ directory and then recreate an empty replacement.
 symbolically linked to `/run/overlayfs` for a OverlayFS mount overlay). (A
 required sister directory `/<pathspec>/../ovlwork` is automatically made.)
 * _none_ (the word itself) specifies that no overlay will be used, such as
+*_<devspec>_* may be in the form of
++
+{`serial=<devserial>/serial/<partspec>|UUID=?*|PARTUUID=?*|LABEL=?*|PARTLABEL=?*|/dev/?*`}
++
+serial=_<devserial>_/serial/_<partspec>_ specifies the ID_SERIAL_SHORT
+property value for the target disk device followed by `/serial/`, and
+_<partspec>_, where _<partspec>_ is a numeric only partition number or one of
+the other _<devspec>_ specifications.
 * *_<pathspec>_* is a path within the *_<devspec>_* filesystem to either
 ** a file (that is loop mounted for a Device-mapper overlay) or
 ** a directory (that is symbolically linked to `/run/overlayfs` for a OverlayFS
@@ -1769,6 +1835,8 @@ rd.live.overlay.readonly:: rd.overlay.readonly (since version 110)
 rd.live.overlay:: rd.overlay (since version 110)
 
 rd.live.overlay.reset:: rd.overlay.reset (since version 110)
+
+rd.live.squashfsimg:: rd.live.rorootfsimg
 
 Configuration in the Initramfs
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
