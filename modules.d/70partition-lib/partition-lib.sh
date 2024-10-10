@@ -472,34 +472,6 @@ parse_cfgArgs() {
                     esac
                 }
                 ;;
-            mklabel)
-                mklabel=gpt
-                ESP=$(aptPartitionName "$diskDevice" 1)
-                ln -sf "$ESP" /run/initramfs/espdev
-                espStart=1
-                ;;
-            ropt)
-                cfg="$1"
-                ;;
-            auto)
-                espStart=1
-                cfg=ovl
-                ;;
-            iso | ciso)
-                cfg="$1"
-                [ -h /run/initramfs/isofile ] && isofile=$(readlink -f /run/initramfs/isofile)
-                ;;
-            new:*)
-                # New overlay based on existing live_dir:
-                base_dir="${1##*:}"
-                cfg=ovl:"${1%:*}"
-                # Trigger default ovlpath specification.
-                rd_live_overlay=''
-                ;;
-            esp=*)
-                szESP=${1#esp=}
-                espStart=1
-                ;;
             ea=?*)
                 extra_attrs="${*}"
                 extra_attrs=${extra_attrs#ea=}
