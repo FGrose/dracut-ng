@@ -834,11 +834,35 @@ parse_cfgArgs() {
                     [ "$p_Partition" ] && removePt="$p_Partition"
                 }
                 ;;
+            serial=?*)
+                ISS=${1%%/serial/*}
+                diskDevice=$(ID_SERIAL_SHORT_to_disc "${ISS#serial=}")
+                echo "$diskDevice" > /run/initramfs/diskdev
+                get_partitionTable "$diskDevice"
+                ptSpec=${1#*/serial/}
+                [ "$ptSpec" ] && {
+                    case "$ptSpec" in
+                        *[!0-9]* | 0*)
+                            # Anything but a positive integer:
+                            p_Partition=$(label_uuid_to_dev "$ptSpec")
+                            ;;
+                        *)
+                            p_Partition=$(aptPartitionName "$diskDevice" "$partNbr")
+                            ;;
+                    esac
+                }
+                ;;
             ea=?*)
                 extra_attrs="${*}"
                 extra_attrs=${extra_attrs#ea=}
                 break
                 # ea,extra attribute,s must be the final arguments.
+                ;;
+            PROMPTDK | PROMPTPT)
+                prompt_for_device "${1#PROMPT}"
+                ;;
+            PROMPTDR)
+                prompt_for_path "$1"
                 ;;
             PROMPTSZ)
                 # Assigns sizeGiB.
