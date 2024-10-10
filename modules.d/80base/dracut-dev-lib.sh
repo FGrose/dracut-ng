@@ -46,23 +46,102 @@ aptPartitionName() {
     esac
 }
 
-# Trigger a disk or partition, $1, having property [LABEL|UUID|PARTLABEL|PARTUUID]=*
-#   for action, $2, [add|remove|change|move|online|offline|bind|unbind] - default: add
+# mask any commas in ID_SERIAL_SHORT so they don't trigger field separations.
+# $1 - *[serial=]ID_SERIAL_SHORT[/serial/]*
+# commas before serial= and after /serial/ are untouched.
+# (Both commas and semicolons are possible, but rarely seen characters; seeing
+#  both at once should be even rarer.)
+maskComma_inSerial() {
+    local - ISS _ISS
+    set +x
+    ISS=${1#*serial=}
+    ISS=${ISS%/serial/*}
+    if strstr "$ISS" ,; then
+        local b a _ISS
+        b=${1%"${ISS}"*}
+        a=${1#*"$ISS"}
+        _ISS=$(
+            sed 's/,/;/g' << E
+$ISS
+E
+        )
+        echo "$b$_ISS$a"
+    else
+        echo "$1"
+    fi
+}
+
+# Find the disc device with a particular serial number.
+#   $1 - device serial number with commas masked to semicolons.
+#   False if not found.
+ID_SERIAL_SHORT_to_disc() {
+    local - _ISS dev_id s_path d_node
+    set +x
+    if strstr "$1" \;; then
+        # Unmask commas.
+        _ISS=$(
+            sed 's/;/,/g' << E
+$1
+E
+        )
+    else
+        _ISS=$1
+    fi
+    for s_path in /sys/class/block/*; do
+        [ -d "$s_path" ] || continue
+        read -r dev_id < "$s_path"/dev
+        case "${dev_id%:*}" in
+            # Exclude loop, cdrom, & zram
+            7 | 11 | 25[129]) continue ;;
+        esac
+        [ -f "$s_path"/partition ] && continue
+        d_node=/dev/"${s_path##*/}"
+        [ -e "$d_node" ] || continue
+        ser=''
+        if [ -f "$s_path"/device/serial ]; then
+            read -r ser < "$s_path"/device/serial
+        elif [ -f "$s_path"/device/device/serial ]; then
+            read -r ser < "$s_path"/device/device/serial
+        elif [ -f "$s_path"/uevent ]; then
+            while read -r line; do
+                case "$line" in ID_SERIAL_SHORT=*) ser="${line#*=}" ;; esac
+            done < "$s_path"/uevent
+        fi
+        [ "$ser" ] || ser=$(udevadm info -q property --value --property=ID_SERIAL_SHORT "$d_node")
+        [ "$ser" = "$_ISS" ] && {
+            echo "$d_node"
+            return 0
+        }
+    done
+    return 1
+}
+
+# Trigger a disk or partition having property spec
+#  $1 - {LABEL=|UUID=|PARTLABEL=|PARTUUID=|serial=<SERIAL_SHORT>/serial/[spec]}
+#  for action $2 - [add|remove|change|move|online|offline|bind|unbind] default: add
 label_uuid_udevadm_trigger() {
-    local _dev _property
-    _dev="${1#block:}"
+    local _dev="${1#block:}" _act="${2:-add}" _prop=''
     case "$_dev" in
+        serial=*/serial/*)
+            _dev="${_dev#serial}"
+            _prop=ID_SERIAL_SHORT"${_dev%/serial/*}"
+            udevadm trigger --subsystem-match=block --action="$_act" --property-match="$_prop" --settle
+            _dev="${_dev#*/serial/}"
+            # _dev may have a partition specified after /serial/
+            [ "$_dev" ] && label_uuid_udevadm_trigger "$_dev" "$_act" --settle
+            return 0
+            ;;
         LABEL=* | UUID=*)
-            _property=ID_FS_${_dev}
+            _prop=ID_FS_"${_dev}"
             ;;
         PARTLABEL=*)
-            _property=ID_PART_ENTRY_NAME=${_dev#PARTLABEL=}
+            _prop=ID_PART_ENTRY_NAME="${_dev#PARTLABEL=}"
             ;;
         PARTUUID=*)
-            _property=ID_PART_ENTRY_${_dev#PART}
+            _prop=ID_PART_ENTRY_"${_dev#PART}"
             ;;
     esac
-    udevadm trigger --subsystem-match=block --action="${2:-add}" ${_property:+--property-match=$_property} --settle
+    udevadm trigger --subsystem-match=block --action="$_act" ${_prop:+--property-match="$_prop"} --settle
 }
 
 
