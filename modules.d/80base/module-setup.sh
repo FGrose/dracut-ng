@@ -30,6 +30,7 @@ install() {
         flock \
         ln \
         ls \
+        lsblk \
         mkdir \
         mkfifo \
         mknod \
