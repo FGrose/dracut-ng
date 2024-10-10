@@ -46,7 +46,62 @@ aptPartitionName() {
     esac
 }
 
-# Trigger a disk or partition, $1, having property [LABEL|UUID|PARTLABEL|PARTUUID]=*
+# mask any commas in ID_SERIAL_SHORT so they don't trigger field separations.
+# $1 - *[serial=]ID_SERIAL_SHORT[/serial/]*
+# commas before serial= and after /serial/ are untouched.
+# (Both commas and semicolons are possible, but rarely seen characters; seeing
+#  both at once should be even rarer.)
+maskComma_inSerial() {
+    local - ISS _ISS
+    set +x
+    ISS=${1#*serial=}
+    ISS=${ISS%/serial/*}
+    if strstr "$ISS" ,; then
+        local b a _ISS
+        b=${1%"${ISS}"*}
+        a=${1#*"$ISS"}
+        _ISS=$(
+            sed 's/,/;/g' << E
+$ISS
+E
+        )
+        echo "$b$_ISS$a"
+    else
+        echo "$1"
+    fi
+}
+
+# Find the disc device with a particular serial number.
+#   $1 - device serial number with commas masked to semicolons.
+#   False if not found.
+ID_SERIAL_SHORT_to_disc() {
+    local - _ISS dev_serials _dev
+    set +x
+    if strstr "$1" \;; then
+        # Unmask commas.
+        _ISS=$(
+            sed 's/;/,/g' << E
+$1
+E
+        )
+    else
+        _ISS=$1
+    fi
+    # Exclude major 252, zram
+    dev_serials="$(lsblk -e 252 -dnro PATH,SERIAL 2> /dev/null)
+"
+    _dev=${dev_serials%% "$_ISS"
+*}
+    _dev="${_dev##*
+}"
+    [ "$_dev" ] && {
+        echo "$_dev"
+        return 0
+    }
+    return 1
+}
+
+# Trigger a disk or partition, $1, having property [LABEL=|UUID=|PARTLABEL=|PARTUUID=|serial=<SERIAL_SHORT>/serial/]*
 #   for action, $2, [add|remove|change|move|online|offline|bind|unbind] - default: add
 label_uuid_udevadm_trigger() {
     local _dev _property
@@ -60,6 +115,13 @@ label_uuid_udevadm_trigger() {
             ;;
         PARTUUID=*)
             _property=ID_PART_ENTRY_${_dev#PART}
+            ;;
+        serial=*/serial/*)
+            _dev="${_dev#serial}"
+            _property=ID_SERIAL_SHORT${_dev%/serial/*}
+            udevadm trigger --subsystem-match=block --action="${2:-add}" ${_property:+--property-match=$_property} --settle
+            _dev=${_dev#*/serial/}
+            [ "$_dev" ] && label_uuid_udevadm_trigger "$_dev"
             ;;
     esac
     udevadm trigger --subsystem-match=block --action="${2:-add}" ${_property:+--property-match=$_property} --settle

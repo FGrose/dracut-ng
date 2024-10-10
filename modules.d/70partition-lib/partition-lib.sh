@@ -641,6 +641,77 @@ $fslist
     return 0
 }
 
+parse_cfgArgs() {
+    local -
+    set -x
+    # shellcheck disable=SC2068
+    set -- $@ # rd_live_overlay
+    IFS=' 	
+'
+    for _; do
+        case "$1" in
+            '' | btrfs | ext[432] | f2fs | xfs)
+                p_ptfsType=${1:-${p_ptfsType:-ext4}}
+                ;;
+            recreate=*)
+                removePt="${1#recreate=}"
+                removePt=$(readlink -f "$(label_uuid_to_dev "$removePt")" 2> /dev/kmsg)
+                [ -b "$removePt" ] || {
+                    [ "$p_Partition" ] && removePt="$p_Partition"
+                }
+                ;;
+            serial=?*)
+                ISS=${1%%/serial/*}
+                diskDevice=$(ID_SERIAL_SHORT_to_disc "${ISS#serial=}")
+                ln -sf "$diskDevice" /run/initramfs/diskdev
+                get_partitionTable "$diskDevice"
+                ptSpec=${1#*/serial/}
+                [ "$ptSpec" ] && {
+                    case "$ptSpec" in
+                        *[!0-9]* | 0*)
+                            # Anything but a positive integer:
+                            p_Partition=$(label_uuid_to_dev "$ptSpec")
+                            ;;
+                        *)
+                            p_Partition=$(aptPartitionName "$diskDevice" "$partNbr")
+                            ;;
+                    esac
+                }
+                ;;
+            ea=?*)
+                extra_attrs="${*}"
+                extra_attrs=${extra_attrs#ea=}
+                break
+                # ea,extra attribute,s must be the final arguments.
+                ;;
+            PROMPTDK | PROMPTPT)
+                prompt_for_device "${1#PROMPT}"
+                ;;
+            PROMPTDR)
+                prompt_for_path "$1"
+                ;;
+            PROMPTSZ)
+                # Assigns sizeGiB.
+                prompt_for_size "$1"
+                ;;
+            PROMPTFS)
+                # Assigns fsType and rootflags.
+                prompt_for_fstype
+                ;;
+            *[!0-9]* | 0*)
+                # Anything but a positive integer:
+                [ "$1" = auto ] || p_Partition=$(label_uuid_to_dev "${1%%:*}")
+                strstr "$1" ":" && ovlpath=${1##*:}
+                ;;
+            *)
+                # any positive integer:
+                sizeGiB=$1
+                ;;
+        esac
+        shift
+    done
+}
+
 prep_Partition() {
     local n removePtNbr freeSpaceStart freeSpaceEnd byteMax
     [ "$p_pt" ] && ! [ -b "$p_pt" ] \

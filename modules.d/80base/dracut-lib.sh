@@ -612,8 +612,9 @@ udevmatch() {
     esac
 }
 
+# Return a disk device or partition specification from various common input selectors.
 label_uuid_to_dev() {
-    local _dev
+    local _dev ISS diskDevice ptSpec
     _dev="${1#block:}"
     case "$_dev" in
         LABEL=*)
@@ -627,6 +628,22 @@ label_uuid_to_dev() {
             ;;
         PARTUUID=*)
             echo "/dev/disk/by-partuuid/${_dev#PARTUUID=}"
+            ;;
+        serial=*/serial/*)
+            ISS=${_dev%%/serial/*}
+            diskDevice=$(ID_SERIAL_SHORT_to_disc "${ISS#serial=}")
+            ptSpec=${_dev#*/serial/}
+            [ "$ptSpec" ] && {
+                case "$ptSpec" in
+                    *[!0-9]* | 0*)
+                        # Anything but a positive integer:
+                        label_uuid_to_dev "$ptSpec"
+                        ;;
+                    *)
+                        aptPartitionName "$diskDevice" "$ptSpec"
+                        ;;
+                esac
+            }
             ;;
         *)
             echo "$_dev"
