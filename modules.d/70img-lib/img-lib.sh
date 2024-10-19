@@ -99,19 +99,22 @@ unpack_img() {
 # Increase /run tmpfs size, if needed.
 check_live_ram() {
     local minmem imgsize memsize runsize runavail
-    minmem=$(getarg rd.minmem)
+    [ "$1" ] || {
+        warn "Image size could not be determined."
+        return 0
+    }
+    memsize=$(check_meminfo MemTotal:) || {
+        warn "Memory size could not be determined."
+        return 0
+    }
     imgsize=$1
-    memsize=$(($(check_meminfo MemTotal:) >> 10))
+    minmem=$(getarg rd.minmem)
+    memsize=$((${memsize:-1} >> 10))
     # shellcheck disable=SC2046
     set -- $(findmnt -bnro SIZE,AVAIL /run)
     # bytes to MiB
     runsize=$(($1 >> 20))
     runavail=$(($2 >> 20))
-
-    [ "$imgsize" ] || {
-        warn "Image size could not be determined"
-        return 0
-    }
 
     if [ $((memsize - imgsize)) -lt "${minmem:=1024}" ]; then
         sed -i "N;/and attach it to a bug report./s/echo$/echo\n\
