@@ -38,7 +38,6 @@ label="${label%%\"*}"
 
 echo "$uuid" > /run/initramfs/live_uuid
 load_fstype "$livedev_fstype"
-live_dir=$(getarg rd.live.dir) || live_dir=LiveOS
 roroot_image=$(getarg rd.live.rorootimg -d -y rd.live.squashimg) || roroot_image=squashfs.img
 getargbool 0 rd.live.ram && live_ram=yes
 getargbool 0 rd.overlay.reset -d -y rd.live.overlay.reset && {
@@ -90,15 +89,6 @@ rd_live_check() {
     }
 }
 
-rd_overlay=$(get_rd_overlay) && {
-    IFS=, parse_cfgArgs "$rd_overlay"
-
-    # Set default ovlpath, if not specified.
-    [ "$ovlpath" = auto ] && unset -v 'ovlpath'
-    : "${ovlpath:=/"$live_dir"/overlay-"$label"-"$uuid"}"
-    str_starts "$ovlpath" '/' || ovlpath=/"$ovlpath"
-}
-
 [ "$partitionTable" ] || get_partitionTable "$diskDevice"
 
 IFS=: parse_pt_row "$(pt_row 2)"
@@ -108,6 +98,21 @@ IFS=: parse_pt_row "$(pt_row 2)"
     ESP=$(aptPartitionName "$diskDevice" 2)
     ln -sf "$ESP" /run/initramfs/espdev
 }
+
+rd_overlay=$(get_rd_overlay) && {
+    IFS=, parse_cfgArgs "$rd_overlay"
+
+    # Set default ovlpath, if not specified.
+    [ "$ovlpath" = auto ] && unset -v 'ovlpath'
+    : "${ovlpath:=/"$live_dir"/overlay-"$label"-"$uuid"}"
+    str_starts "$ovlpath" '/' || ovlpath=/"$ovlpath"
+}
+
+rd_live_image=$(getarg rd.live.image) && IFS=, parse_cfgArgs "$rd_live_image"
+
+live_dir=$(getarg rd.live.dir) || live_dir=LiveOS
+[ "$live_dir" = PROMPT ] && prompt_for_livedir
+echo "$live_dir" > /run/initramfs/live_dir
 
 case "$livedev_fstype" in
     iso9660 | udf)
@@ -159,6 +164,54 @@ esac
     sleep 0.1
     $mntcmd -o ${liverw:-ro} "$livedev" /run/initramfs/live > /dev/kmsg 2>&1 \
         || Die "Failed to mount block device of live image."
+}
+
+[ "$espStart$base_dir$cfg" ] && {
+    # New installations...
+    [ "$ESP" ] || get_ESP "$diskDevice"
+
+    # Copy content for new ESP.
+    mount -n -m -t vfat -o nocase,shortname=win95 /run/initramfs/espdev /run/initramfs/ESP
+
+    mkdir -p "${BOOTPATH:=/run/initramfs/ESP/"$live_dir"}"
+    GRUB_cfg=/run/initramfs/ESP/EFI/BOOT/grub.cfg
+
+    # Save a previous configuration, if present.
+    set -- /run/initramfs/ESP/*/images /run/initramfs/ESP/*/boot
+    [ -e "$1" ] || [ -e "$2" ] && {
+        cp -a "$GRUB_cfg" "$GRUB_cfg".multi
+        cp -a "$GRUB_cfg".multi "$GRUB_cfg".prev
+        [ "$base_dir" ] && {
+            [ -d /run/initramfs/ESP/"$base_dir" ] || {
+                [ -e "$1" ] || shift
+                # Fix bug in GRUB that misreports first directory name.
+                base_dir=${1#*ESP/}
+                base_dir=${base_dir%/*}
+            }
+        }
+    }
+
+    BOOTDIR=boot
+    [ -d /run/initramfs/live/images/pxeboot ] && BOOTDIR=images
+
+    mkdir -p "${BOOTPATH:=/run/initramfs/ESP/"$live_dir"}"
+    if [ "$base_dir" ]; then
+        cfg=ovl
+        cp -au /run/initramfs/ESP/"$base_dir/$BOOTDIR" "$BOOTPATH" || Die "Copy of $base_dir/$BOOTDIR to $BOOTPATH failed."
+        # Trigger update_BootConfig in pre-pivot-actions.sh
+        rm "$BOOTPATH"/esp_uuid
+    else
+        cp -au /run/initramfs/live/"$BOOTDIR" "$BOOTPATH" || Die "Copy to $BOOTPATH failed."
+    fi
+    # cp -u preserves files with newer modification timestamps.
+    cp -au /run/initramfs/live/EFI /run/initramfs/ESP || Die "Copy to ${BOOTPATH%/*} failed."
+
+    cp /run/initramfs/live/boot/grub2/grub.cfg "$GRUB_cfg"
+
+    [ -d /run/initramfs/live/System ] && {
+        cp -au /run/initramfs/live/System /run/initramfs/ESP
+        cp -au /run/initramfs/live/mach_kernel /run/initramfs/ESP
+    }
 }
 
 # overlay setup helper function

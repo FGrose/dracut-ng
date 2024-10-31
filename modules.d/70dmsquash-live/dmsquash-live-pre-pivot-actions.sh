@@ -20,7 +20,7 @@ fi
 
 getargbool 0 rd.overlayfs && {
     mntDir=/run/initramfs/LiveOS_persist
-    live_dir=$(readlink /run/initramfs/live_dir)
+    read -r live_dir < /run/initramfs/live_dir
 
     [ -f "$mntDir/$live_dir"/esp_uuid ] && {
         read -r esp_uuid < "$mntDir/$live_dir"/esp_uuid
