@@ -162,6 +162,8 @@ search --no-floppy --efidisk-only --set esp -u ${esp_uuid}
 \	${root_arg:+root_arg=$root_arg}\\
 \	menu_item 'Start a pristine, transient $_TITLE' '$_BOOTDIR' '' (\$esp)/'$_live_dir' '$rootcfg' '$cfgargs'\\
 \	menu_item 'Start the saved -$_live_dir- image readonly via a RAM overlay' '$_BOOTDIR' '' (\$esp)/'$_live_dir' '$rootcfg' 'rd.ovl.flags=ro rd.live.overlay.readonly rd.live.overlay=PARTUUID=$PARTUUID:/$_live_dir/$ovl $cfgargs'\\
+\	menu_item 'Make a new, persistent overlay directory for the base image' '$_BOOTDIR' '' (\$esp)/'$_live_dir' '${rootcfg% rd\.live\.dir*}' 'rd.live.dir=PROMPT rd.live.overlay=PARTUUID=$PARTUUID,new:$_live_dir $cfgargs'\\
+\	menu_item 'Format a new, persistence partition for the -$_live_dir- base image' '$_BOOTDIR' '' (\$esp)/'$_live_dir' '${rootcfg% rd\.live\.dir*}' 'rd.live.dir=PROMPT rd.live.overlay=new:$_live_dir,PROMPTSZ,PROMPTFS $cfgargs'\\
 \	menu_item 'Reset any persistent overlay & start the -$_live_dir- base image' '$_BOOTDIR' '' (\$esp)/'$_live_dir' '$rootcfg' 'rd.live.overlay.reset rd.live.overlay=PARTUUID=$PARTUUID:/$_live_dir/$ovl $cfgargs'
                /^\s*menuentry\s+/ {
                s;(Start \S+).*(in basic graphics mode).*('|\");Start the -$_live_dir- image \2 w/debug log\3;
@@ -210,14 +212,11 @@ search --no-floppy --efidisk-only --set esp -u ${esp_uuid}
         s;(serial=).*(\/serial\/);\1$SERIAL\2;
         s/(TARGET: ').*'/\1$target'/" "$GRUB_cfg"
 
-    case "$rd_live_image" in
-        *+p_pt*)
-            # Condition of newly created persistence partition.
-            sed -i -r "/^### ISOSCAN/, /^### end_ISOSCAN/ !{
-            s/rd\.live.\image=(.*)\+p_pt/rd\.live\.image=\1/
+    [ -h /run/initramfs/p_pt ] && {
+        # Condition of newly created persistence partition.
+        sed -i -r "/^### ISOSCAN/, /^### end_ISOSCAN/ !{
 s/rd\.live\.overlay=\S*/rd\.live\.overlay=PARTUUID=$PARTUUID ${ROOTFLAGS:+rootflags=$ROOTFLAGS }/
-s;(new:.*,serial=.*/)\S*;\1 rd\.live\.overlay=PARTUUID=$PARTUUID ${ROOTFLAGS:+rootflags=$ROOTFLAGS };
-s/(menu_new_ovl\s+\S+\s+\S+\s+\S+\s+\S+\s+)''/\1'$ovl_puuid'/
+s;(new:.*|serial=.*/)\S*;\1 rd\.live\.overlay=PARTUUID=$PARTUUID ${ROOTFLAGS:+rootflags=$ROOTFLAGS };
 }" "$GRUB_cfg"
             ;;
     esac

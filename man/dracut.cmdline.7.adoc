@@ -1512,7 +1512,7 @@ Specifies the filename for a read-only image of the root filesystem.
 By default, this is __squashfs.img__.
 
 **rd.live.squashimg=**__<filename of SquashFS image>__::
-_Deprecated_ use rd.live.rorootimg instead.
+_Deprecated_; use rd.live.rorootimg instead.
 Specifies the filename for a SquashFS image of the root filesystem.
 By default, this is __squashfs.img__.
 
