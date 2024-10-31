@@ -1401,8 +1401,8 @@ lower layer with the root filesystem.
 
 **rd.live.image**[=__esp[=<sizeMiB>]__]::
 This parameter without an argument supports the legacy syntax of passing just
-the base root filesystem partition *root=_<path to blockdevice>_* instead
-of *root=live:_<path to blockdevice>_*.
+the base root filesystem partition *root=_<device specification>_* instead
+of *root=live:_<device specification>_*.
 With argument
 * *_esp[=<sizeMiB>]_* a new EFI System Partition will be created on the boot
 media with the size specified.  The existing ESP will be replaced by a copy in
@@ -1535,10 +1535,10 @@ By default, this is __squashfs.img__.
 Copy the complete image to RAM and use this for booting. This is useful
 when the image resides on, _e.g._, a DVD which needs to be ejected later on.
 
-**rd.overlay=**{[{__<size>__|PROMPTSZ}[,{__<fstype>__|PROMPTFS}[,recreate[=__<devspec>__][,__<devspec>__[:{__<pathspec>__|auto}[,ea=__<extra_attr__,__s>__]]]]]]]|none}::
+**rd.overlay=**{[{__<size>__|PROMPTSZ}[,{__<fstype>__|PROMPTFS}[,new_pt_for:__<live_dir>__[,recreate[=__<devspec>__][,{__<devspec>__|PROMPTPT|PROMPTDK}[:{__<pathspec>__|auto}[,ea=__<extra_attr__,__s>__]]]]]]]|none}::
 Manage the specification of a persistent overlay that can be used to save
 changes made to the root filesystem within the +
-**root=**live:__<path to blockdevice>__ or **root=**live:__<url>__ device.
+**root=**live:__<device specification>__ or **root=**live:__<url>__ device.
 +
 The default _pathspec_, when *:auto* or no **:**__<pathspec>__ is given, is
 `/<rd.live.dir>/overlay-<label>-<uuid>`, where _<label>_ and _<uuid>_ are the
@@ -1577,6 +1577,11 @@ supplied without a *_<devspec>_* argument (such as in a mklabel boot), a commaâ€
 `,`â€”should precede or follow all these arguments to indicate that *_<devspec>_*
 is specified elsewhare.
 +
+* *_new_pt_for:<live_dir>_* specifies that a new persistent OverlayFS directory
+will be created for the existing installation specified by *_<live_dir>_*.  The
+new directory will be created in the partitions specified by *_<devspec>_*.  A
+new persistence partition can be specified by omitting *_<devspec>_* or by
+using a *PROMPT__* argument.
 * *_recreate_*[=_<devspec>_] specify the destruction and recreation of a
 partition no larger than the contiguous free space at the one destroyed. If no
 _<devspec>_ is provided, the partition named __LiveOS_persist__ on the root
@@ -1593,6 +1598,9 @@ serial=_<devserial>_/serial/_<partspec>_ specifies the ID_SERIAL_SHORT
 property value for the target disk device followed by `/serial/`, and
 _<partspec>_, where _<partspec>_ is a numeric only partition number or one of
 the other _<devspec>_ specifications.
+* *_PROMPTPT_* triggers the preparation of a console menu for selecting a
+partition for the overlay.
+* *_PROMPTDK_* likewise, a menu for selecting a disk device.
 * *_<pathspec>_* is a path within the *_<devspec>_* filesystem to either
 ** a file (that is loop mounted for a Device-mapper overlay) or
 ** a directory (that is symbolically linked to `/run/overlayfs` for a OverlayFS

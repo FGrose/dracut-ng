@@ -363,6 +363,66 @@ prompt_for_path() {
         obj="${obj%%[\`\'|
 ]*}"
     }
+
+# Prompt for Live directory name
+prompt_for_livedir() {
+    local - d warn list
+    set +x
+    get_ESP "$diskDevice"
+    # Some hardware devices need more time to respond in very early boot.
+    sleep 0.1
+    if mount -n -t vfat -m -o check=s "$ESP" /run/initramfs/ESP; then
+        list='`
+`  Installed LiveOS directories:'
+        for d in /run/initramfs/ESP/*/images; do
+            d=${d#*ESP/}
+            d=${d%/images}
+            [ "$d" = "*" ] || list="$list
+    \`  $d"
+        done
+        for d in /run/initramfs/ESP/*/boot; do
+            d=${d#*ESP/}
+            d=${d%/boot}
+            [ "$d" = "*" ] || list="$list
+    \`  $d"
+        done
+    else
+        list='To recognize your image installation,'
+    fi
+    if [ "$base_dir" ]; then
+        list="$list
+\`  For a new overlay for the system image '$base_dir',"
+    else
+        list="$list
+\`  For the image labeled '$label',"
+    fi
+    echo 'Please enter a short, unique, & distinguishing Live directory name here:' > /tmp/prompt
+    [ "$PLYMOUTH" ] || list="$list
+\`"
+    case_block() {
+        case "$REPLY" in
+            *[[:space:]]* | *[[:cntrl:]]* | '')
+                echo "LiveDir '$REPLY' is null, has whitespace, or control characters; Please select another LiveDir name:" > /tmp/prompt
+                ;;
+            break)
+                Die "Forced break from prompt_for_livedir()."
+                ;;
+            *)
+                if [ -d /run/initramfs/ESP/"$REPLY" ]; then
+                    echo "LiveDir '$REPLY' already exists; Please select another LiveDir name:" > /tmp/prompt
+                else
+                    [ "$base_dir" ] && srcdir=$base_dir
+                    obj="$REPLY"
+                fi
+                ;;
+        esac
+    }
+
+    end_block() {
+        [ -b "$ESP" ] && umount /run/initramfs/ESP
+        [ "$srcdir" = PROMPT ] && srcdir=LiveOS
+        ln -sf "$REPLY" /run/initramfs/live_dir
+    }
     prompt_for_input
 }
 
@@ -664,6 +724,7 @@ parse_cfgArgs() {
                 ISS=${1%%/serial/*}
                 diskDevice=$(ID_SERIAL_SHORT_to_disc "${ISS#serial=}")
                 ln -sf "$diskDevice" /run/initramfs/diskdev
+                get_partitionTable "$diskDevice"
                 ptSpec=${1#*/serial/}
                 [ "$ptSpec" ] && {
                     case "$ptSpec" in
@@ -677,10 +738,6 @@ parse_cfgArgs() {
                     esac
                 }
                 ;;
-            auto)
-                espStart=1
-                cfg=ovl
-                ;;
             esp=*)
                 szESP=${1#esp=}
                 espStart=1
@@ -690,6 +747,13 @@ parse_cfgArgs() {
                 extra_attrs=${extra_attrs#ea=}
                 break
                 # ea,extra attribute,s must be the final arguments.
+                ;;
+            new_pt_for:*)
+                # New overlay partition for an existing ovl_dir:
+                base_dir="${1##*:}"
+                cfg=ovl:"${1%:*}"
+                # Trigger default ovlpath specification.
+                rd_overlay=''
                 ;;
             PROMPTDK | PROMPTPT)
                 prompt_for_device "${1#PROMPT}"
@@ -776,7 +840,11 @@ prep_Partition() {
             freeSpaceStart=${2%B}
             ;;
     esac
-    [ "$removePt" ] || freeSpaceStart=$((${3%B} + 1))
+    [ "$removePt" ] || {
+        freeSpaceStart=$((${3%B} + 1))
+        # dd'd .iso size
+        sz=$((freeSpaceStart + 32768))
+    }
     byteMax=$((szDisk - 268435456))
 
     # Make optimalIO alignment at least 4 MiB.
@@ -787,6 +855,7 @@ prep_Partition() {
     optimize() {
         eval "$2"=$((($1 + optimalIO - 1) / optimalIO * optimalIO))
     }
+
     [ "$espStart" ] && {
         # Format ESP.
         espStart=${2%B}
@@ -855,8 +924,14 @@ prep_Partition() {
     optimize "$partitionStart" partitionStart
 
     [ "$espStart" ] && {
-        espCmd="rm ${espNbr:=1}"
-        espCmd="${espCmd:+rm "$espNbr"} --align optimal mkpart ESP fat32 ${espStart}B $((partitionStart - 1))B \
+        if [ "$mklabel" ]; then
+            espNbr=1
+            unset -v 'removePtNbr'
+            wipefs --lock -af${QUIET:+q} "$diskDevice"
+        else
+            espCmd="rm ${espNbr:=1}"
+        fi
+        espCmd="${espCmd:+rm "$espNbr"} --align optimal mkpart ESP fat32 ${espStart}B ${espEnd:=$((partitionStart - 1))}B \
             type $espNbr c12a7328-f81f-11d2-ba4b-00a0c93ec93b"
     }
 
@@ -868,22 +943,10 @@ prep_Partition() {
     sizeGiB=${sizeGiB:+$((sizeGiB << 30))}
     partitionEnd="$((partitionStart + ${sizeGiB:-$szDisk} - 512))"
     [ "$partitionEnd" -gt "$freeSpaceEnd" ] && partitionEnd="$freeSpaceEnd"
+    p_ptCmd="--align optimal mkpart ${live_dir}.. ${partitionStart}B ${partitionEnd}B"
 
     run_parted "$diskDevice" --fix ${removePtNbr:+rm $removePtNbr} \
         "${newptCmd:=--align optimal mkpart LiveOS_persist "${partitionStart}B" "${partitionEnd}B"}"
-
-    # shellcheck disable=SC2086
-    run_parted "${diskDevice}" --fix \
-        ${removePtNbr:+rm "$removePtNbr"} \
-        ${espCmd:+$espCmd} \
-        ${newptCmd:=--align optimal mkpart "$live_dir".. "${partitionStart}"B "${partitionEnd}"B}
-    : "${cfg:=ovl}"
-
-    [ "$espCmd" ] && {
-        udevadm trigger --name-match "$ESP" --action add --settle > /dev/kmsg 2>&1
-        mkfs_config fat ESP $((partitionStart - espStart))
-        create_Filesystem fat "$ESP"
-    }
 
     newptCmd="$p_ptCmd"
     # LiveOS persistence partition type
@@ -896,6 +959,12 @@ prep_Partition() {
         ${newptCmd}
     : "${cfg:=ovl}"
 
+    [ "$espCmd" ] && {
+        udevadm trigger --name-match "$ESP" --action add --settle > /dev/kmsg 2>&1
+        mkfs_config fat ESP $((partitionStart - espStart))
+        create_Filesystem fat "$ESP"
+    }
+
     # Set new partition type with command - $@
     set_pt_type() {
         get_partitionTable "$diskDevice"
@@ -906,14 +975,17 @@ prep_Partition() {
     # shellcheck disable=SC2086
     set_pt_type $newptCmd
 
-    p_Partition=$(aptPartitionName "$diskDevice" "$newPtNbr")
-    udevadm trigger --name-match "$p_Partition" --action add --settle > /dev/kmsg 2>&1
-    ln -sf "$p_Partition" /run/initramfs/p_pt
+    [ "$p_Partition" ] || {
+        p_Partition=$(aptPartitionName "$diskDevice" "$newptNbr")
 
-    [ "$p_ptFlags" ] || set_FS_opts_w "${fsType:-ext4}" p_ptFlags
-    mkfs_config "${p_ptfsType:=ext4}" LiveOS_persist $((partitionEnd - partitionStart + 1)) "${extra_attrs}"
-    wipefs --lock -af${QUIET:+q} "$p_Partition"
-    create_Filesystem "$p_ptfsType" "$p_Partition"
+        udevadm trigger --name-match "$p_Partition" --action add --settle > /dev/kmsg 2>&1
+        ln -sf "$p_Partition" /run/initramfs/p_pt
+
+        [ "$p_ptFlags" ] || set_FS_opts_w "${fsType:-ext4}" p_ptFlags
+        mkfs_config "${p_ptfsType:=ext4}" LiveOS_persist $((partitionEnd - partitionStart + 1)) "${extra_attrs}"
+        wipefs --lock -af${QUIET:+q} "$p_Partition"
+        create_Filesystem "$p_ptfsType" "$p_Partition"
+    }
 }
 
 install_Image() {
