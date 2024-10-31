@@ -102,6 +102,7 @@ rd_live_check() {
 rd_live_image=$(getarg rd.live.image) && IFS=, parse_cfgArgs "$rd_live_image"
 
 live_dir=$(getarg rd.live.dir) || live_dir=LiveOS
+[ "$live_dir" = PROMPT ] && prompt_for_livedir
 printf '%s' "$live_dir" > /run/initramfs/live_dir
 
 [ "$partitionTable" ] || get_partitionTable "$diskDevice"
@@ -169,11 +170,11 @@ esac
         || Die "Failed to mount block device of live image."
 }
 
-[ "$espStart" ] && {
+[ "$espStart$base_dir$cfg" ] && {
     # New installations...
     [ "$ESP" ] || get_ESP "$diskDevice"
 
-    # Copy content for new ESP.
+    # Copy content for new BOOTPATH.
     mount -n -m -t vfat -o check=s /run/initramfs/espdev /run/initramfs/ESP
 
     mkdir -p "${BOOTPATH:=/run/initramfs/ESP/"$live_dir"}"
@@ -184,12 +185,28 @@ esac
     [ -e "$1" ] || [ -e "$2" ] && {
         cp -a "$GRUB_cfg" "$GRUB_cfg".multi
         cp -a "$GRUB_cfg".multi "$GRUB_cfg".prev
+        [ "$base_dir" ] && {
+            [ -d /run/initramfs/ESP/"$base_dir" ] || {
+                [ -e "$1" ] || shift
+                # Fix bug in GRUB that misreports first directory name.
+                base_dir=${1#*ESP/}
+                base_dir=${base_dir%/*}
+            }
+        }
     }
 
     BOOTDIR=boot
     [ -d /run/initramfs/live/images/pxeboot ] && BOOTDIR=images
 
-    cp -au /run/initramfs/live/"$BOOTDIR" "$BOOTPATH" || Die "Copy to $BOOTPATH failed."
+    mkdir -p "${BOOTPATH:=/run/initramfs/ESP/"$live_dir"}"
+    if [ "$base_dir" ]; then
+        cfg=ovl
+        cp -au /run/initramfs/ESP/"$base_dir/$BOOTDIR" "$BOOTPATH" || Die "Copy of $base_dir/$BOOTDIR to $BOOTPATH failed."
+        # Trigger update_BootConfig in pre-pivot-actions.sh
+        rm "$BOOTPATH"/esp_uuid
+    else
+        cp -au /run/initramfs/live/"$BOOTDIR" "$BOOTPATH" || Die "Copy to $BOOTPATH failed."
+    fi
     # cp -u preserves files with newer modification timestamps.
     cp -au /run/initramfs/live/EFI /run/initramfs/ESP || Die "Copy to ${BOOTPATH%/*} failed."
 
@@ -199,6 +216,7 @@ esac
         cp -au /run/initramfs/live/System /run/initramfs/ESP
         cp -au /run/initramfs/live/mach_kernel /run/initramfs/ESP
     }
+    printf '%s' "$cfg" > /run/initramfs/cfg
 }
 
 # overlay setup helper function
