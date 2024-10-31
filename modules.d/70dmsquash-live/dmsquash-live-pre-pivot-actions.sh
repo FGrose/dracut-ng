@@ -20,7 +20,7 @@ if [ -d /run/initramfs/live/updates ] || [ -d /updates ]; then
     done
 fi
 
-live_dir=$(readlink /run/initramfs/live_dir)
+read -r live_dir < /run/initramfs/live_dir
 
 getargbool 0 rd.overlayfs && {
     read -r mntDir < /run/initramfs/OverlayFS
