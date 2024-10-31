@@ -120,7 +120,7 @@ label_uuid_udevadm_trigger() {
             _dev="${_dev#serial}"
             _property=ID_SERIAL_SHORT${_dev%/serial/*}
             udevadm trigger --subsystem-match=block --action="${2:-add}" ${_property:+--property-match=$_property} --settle
-            _dev=${_dev#*/serial/}
+            _dev="${_dev#*/serial/}"
             [ "$_dev" ] && label_uuid_udevadm_trigger "$_dev"
             ;;
     esac
