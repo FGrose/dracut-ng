@@ -109,14 +109,15 @@ install() {
         inst_script "$moddir/init.sh" "/init"
         inst_hook cmdline 01 "$moddir/parse-kernel.sh"
         inst_hook cmdline 10 "$moddir/parse-root-opts.sh"
-
-        {
-            echo "NAME=dracut"
-            echo "ID=dracut"
-            echo "VERSION_ID=\"$DRACUT_VERSION\""
-            echo 'ANSI_COLOR="0;34"'
-        } > "${initdir}"/usr/lib/initrd-release
     fi
+
+    {
+        echo "NAME=$(get_os_release_datum NAME)"
+        echo "ID=$(get_os_release_datum ID)"
+        echo "IMAGE_ID=dracut-initrd"
+        echo "VERSION_ID=\"$DRACUT_VERSION\""
+        echo 'ANSI_COLOR="0;34"'
+    } > "${initdir}"/usr/lib/initrd-release
 
     ln -fs /proc/self/mounts "$initdir/etc/mtab"
     if [[ $ro_mnt == yes ]]; then
