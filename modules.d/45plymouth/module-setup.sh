@@ -62,6 +62,7 @@ install() {
     inst_hook emergency 50 "$moddir"/plymouth-emergency.sh
 
     inst_multiple readlink
+    inst_simple "$moddir/plymouth-lib.sh" "/lib/plymouth-lib.sh"
 
     inst_multiple plymouthd plymouth
 
