@@ -6,7 +6,14 @@ check() {
 }
 
 depends() {
-    echo base initqueue
+    # Determine distribution in order to select
+    #   the appropriate <distribution>-lib dependency.
+    local dist
+    dist=$(get_os_release_datum ID)
+    dist=${dist#\"}
+    dist=${dist%\"}
+
+    echo base fs-lib initqueue "${dist:-distribution}"-lib distribution-lib
 }
 
 installkernel() {
