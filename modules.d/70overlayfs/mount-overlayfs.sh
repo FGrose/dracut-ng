@@ -2,7 +2,7 @@
 
 command -v getarg > /dev/null || . /lib/dracut-lib.sh
 
-OverlayFS="$(getarg rd.overlayfs)" || return 0
+OverlayFS=$(getarg rd.overlayfs) || return 0
 case "$OverlayFS" in
     0 | no | off) return 0 ;;
 esac
