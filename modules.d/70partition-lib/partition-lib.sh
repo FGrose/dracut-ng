@@ -208,19 +208,6 @@ Press <Escape> to toggle to/from your target selection menu."
     return 0
 }
 
-# from diskDevice $1
-get_ESP() {
-    local -
-    set +x
-    [ "$partitionTable" ] || get_partitionTable "$1"
-    espNbr=${partitionTable%"${partitionTable#* esp;}"}
-    espRow="${espNbr##*;
-}"
-    espNbr=${espRow%%:*}
-    ESP=$(aptPartitionName "$1" "$espNbr")
-    ln -sf "$ESP" /run/initramfs/espdev
-}
-
 # Prompt for $1 - DK | PT
 #           [$2] - message
 #           [$3] - warnx (warning line)
@@ -470,7 +457,6 @@ parse_cfgArgs() {
                 ISS=${1%%/serial/*}
                 diskDevice=$(ID_SERIAL_SHORT_to_disc "${ISS#serial=}")
                 ln -sf "$diskDevice" /run/initramfs/diskdev
-                get_partitionTable "$diskDevice"
                 ptSpec=${1#*/serial/}
                 [ "$ptSpec" ] && {
                     case "$ptSpec" in
@@ -487,6 +473,10 @@ parse_cfgArgs() {
             auto)
                 espStart=1
                 cfg=ovl
+                ;;
+            esp=*)
+                szESP=${1#esp=}
+                espStart=1
                 ;;
             ea=?*)
                 extra_attrs="${*}"

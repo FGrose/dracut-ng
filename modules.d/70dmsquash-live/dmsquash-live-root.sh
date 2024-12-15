@@ -35,7 +35,7 @@ livedev_fstype="${devInfo#*
 TYPE=}"
 livedev_fstype="${livedev_fstype%%
 *}"
-# Retrieve UUID, or if not present, PARTUUID.
+# Retrieve UUID, or if not present, PART_ENTRY_UUID.
 uuid="${devInfo#*[
 _]UUID=}"
 uuid="${uuid%%
@@ -44,9 +44,10 @@ label="${devInfo#*
 LABEL=}"
 label="${label%%
 *}"
+printf '%s' "$uuid" > /run/initramfs/live_uuid
 
 load_fstype "$livedev_fstype"
-live_dir=$(getarg rd.live.dir) || live_dir=LiveOS
+
 squash_image=$(getarg rd.live.squashimg) || squash_image=squashfs.img
 getargbool 0 rd.live.ram && live_ram=yes
 getargbool 0 rd.overlayfs.reset -d -y rd.live.overlay.reset && {
@@ -98,17 +99,18 @@ rd_live_check() {
     }
 }
 
+rd_live_image=$(getarg rd.live.image) && IFS=, parse_cfgArgs "$rd_live_image"
+
+live_dir=$(getarg rd.live.dir) || live_dir=LiveOS
+printf '%s' "$live_dir" > /run/initramfs/live_dir
+
 [ "$partitionTable" ] || get_partitionTable "$diskDevice"
-get_LiveOS_persist
 
 case "$livedev_fstype" in
     iso9660 | udf)
         rd_live_check "${diskDevice:-$livedev}"
         srcdir=LiveOS
         liverw=ro
-        [ -h /run/initramfs/p_pt ] && [ ! "$removePt" ] || {
-            [ "$rd_live_overlay" ] && prep_Partition
-        }
         ;;
     *)
         srcdir=${live_dir:=LiveOS}
@@ -121,11 +123,15 @@ rd_live_overlay=$(getarg rd.live.overlay) && {
 
     # Set default ovlpath, if not specified.
     [ "$ovlpath" = auto ] && unset -v 'ovlpath'
-    : "${ovlpath:=/"$live_dir"/overlay-"$label"-"$uuid"}"
+    : "${ovlpath:=/"$live_dir/overlay-$label-$uuid"}"
     str_starts "$ovlpath" '/' || ovlpath=/"$ovlpath"
 }
 
-# mount the backing of the live image first
+if [ "$removePt$rd_live_overlay$cfg" ] && [ ! "$p_Partition" ]; then
+    prep_Partition
+fi
+
+# mount the backing of the live image
 mkdir -m 0755 -p /run/initramfs/live
 case "$livedev_fstype" in
     auto)
@@ -161,6 +167,38 @@ esac
     sleep 0.1
     $mntcmd -o ${liverw:-ro} "$livedev" /run/initramfs/live > /dev/kmsg 2>&1 \
         || Die "Failed to mount block device of live image."
+}
+
+[ "$espStart" ] && {
+    # New installations...
+    [ "$ESP" ] || get_ESP "$diskDevice"
+
+    # Copy content for new ESP.
+    mount -n -m -t vfat -o check=s /run/initramfs/espdev /run/initramfs/ESP
+
+    mkdir -p "${BOOTPATH:=/run/initramfs/ESP/"$live_dir"}"
+    GRUB_cfg=/run/initramfs/ESP/EFI/BOOT/grub.cfg
+
+    # Save a previous configuration, if present.
+    set -- /run/initramfs/ESP/*/images /run/initramfs/ESP/*/boot
+    [ -e "$1" ] || [ -e "$2" ] && {
+        cp -a "$GRUB_cfg" "$GRUB_cfg".multi
+        cp -a "$GRUB_cfg".multi "$GRUB_cfg".prev
+    }
+
+    BOOTDIR=boot
+    [ -d /run/initramfs/live/images/pxeboot ] && BOOTDIR=images
+
+    cp -au /run/initramfs/live/"$BOOTDIR" "$BOOTPATH" || Die "Copy to $BOOTPATH failed."
+    # cp -u preserves files with newer modification timestamps.
+    cp -au /run/initramfs/live/EFI /run/initramfs/ESP || Die "Copy to ${BOOTPATH%/*} failed."
+
+    cp /run/initramfs/live/boot/grub2/grub.cfg "$GRUB_cfg"
+
+    [ -d /run/initramfs/live/System ] && {
+        cp -au /run/initramfs/live/System /run/initramfs/ESP
+        cp -au /run/initramfs/live/mach_kernel /run/initramfs/ESP
+    }
 }
 
 # overlay setup helper function
@@ -206,13 +244,13 @@ do_live_overlay() {
                     # This leads to an overmount of $mntDir in /sbin/do-overlay
                     ovlpath=/overlayfs
                     live_dir=''
-                    [ "$OverlayFS" ] || ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.overlayfs=LiveOS_rootfs"
+                    [ "$OverlayFS" ] || ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.overlayfs=${OverlayFS:=LiveOS_rootfs}"
                     setup=setup
                     ;;
             esac
         elif [ -d "$mntDir$ovlpath" ] && [ -d "$mntDir$ovlpath"/../ovlwork ]; then
             ## OverlayFS on xattr-enabled filesystem.
-            [ "$OverlayFS" ] || ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.overlayfs=LiveOS_root"
+            [ "$OverlayFS" ] || ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.overlayfs=${OverlayFS:=LiveOS_rootfs}"
             setup=setup
         fi
     fi
