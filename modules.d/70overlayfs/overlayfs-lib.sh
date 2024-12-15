@@ -59,9 +59,8 @@ do_overlayfs() {
     if [ "$ovl_pt" ] && [ "$ovlpath" ]; then
         mkdir -m 0755 -p "${mntDir:=/run/initramfs/LiveOS_persist}"
         if [ "$1" ]; then
-            # [ "$1" = "$mntDir" ] || mount --bind "$1" "$mntDir"
             # We need $ovl_pt writable for overlay storage
-            [ -w "$mntDir" ] || mount -o remount,rw "$mntDir"
+            [ ! -w "$mntDir" ] && [ ! "$readonly_overlay" ] && mount -o remount,rw "$mntDir"
         else
             set_FS_options "${p_ptfsType:=$(blkid --probe --match-tag TYPE --output value --usages filesystem "$ovl_pt")}"
             mount_p_Partition
