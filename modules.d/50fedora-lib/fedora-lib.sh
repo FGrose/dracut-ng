@@ -1,0 +1,230 @@
+#!/bin/sh
+# fedora-lib.sh: utilities for Fedora® image configuration, especially
+#   GRUB boot configuration.
+
+update_BootConfig() {
+    local _ovl_dir root rootcfg livedev ovl_spec ovl _TITLE GRUB_cfg UUID ovl_uuid sedcmd label
+    if [ "$mntDir" ]; then
+        # OverlayFS present.
+        OverlayFS=rd\.overlay=LiveOS_rootfs
+        root=/run/rootfsbase
+        livedev=$mntDir
+    else
+        root=$NEWROOT
+        livedev=$root
+    fi
+
+    livedev=$(readlink /run/initramfs/livedev)
+    read -r UUID < /run/initramfs/live_uuid
+
+    # Transfer boot directory files to ESP.
+    mount -n -m --bind /run/initramfs/ESP "$root"/mnt
+    LC_ALL=C /run/rootfsbase/usr/bin/chroot "$root" \
+        find /boot/. -maxdepth 1 \! -type d -execdir cp --dereference \
+        --preserve=all "{}" "/mnt/$ovl_dir/$BOOTDIR/{}" \;
+    umount "$root"/mnt
+
+    # Backup previous configuration.
+    cp -a "${GRUB_cfg:=/run/initramfs/ESP/EFI/BOOT/grub.cfg}" "$GRUB_cfg".prev
+
+    # Remove unwanted menuentries in Fedora .iso configuration
+    sedcmd="/^\s*menuentry\s+('|\")Test this media/,/^}$/ d"
+
+    # Keep only the first 2 menu/submenu bracketed entries.
+    #   (Uses exchange and '.' as a flag in the hold buffer to count matches;
+    #    q to ignore pattern buffer and quit.)
+    sedcmd="$sedcmd
+/^}$/{x;/./{x;q};s/.*/&./;x}"
+    sed -i -r "$sedcmd" "$GRUB_cfg"
+
+    # Escape special characters for sed regex and replacement strings.
+    # string - $@
+    escape() {
+        sed 's/[]\/;$*.^?+|{}&[]/\\&/g' << E
+$@
+E
+    }
+
+    _ovl_dir="$(escape "$ovl_dir")"
+
+    # Extract image title.
+    _TITLE="$(
+        sed -n -r "
+        0,/^menuentry/ s;.*('|\")Start\s+(w/persistence|a transient|)( \S+\s+~|)(.*)('|\") .*;\4; p" "$GRUB_cfg"
+    )"
+    _TITLE="$(escape "$_TITLE")"
+    ROOTFLAGS=$(getarg rootflags) && {
+        # Remove duplicated root flags & appended ro.
+        ROOTFLAGS=$(
+            sed -r ':a;s/(,(\S+),.*)\2,/\1/;ta' << E
+,${ROOTFLAGS%,ro},
+E
+        )
+        ROOTFLAGS=${ROOTFLAGS#,}
+        ROOTFLAGS=${ROOTFLAGS%,}
+    }
+    _BOOTDIR="$(escape "${BOOTDIR}")"
+
+    # Reset template menuentries to base state.
+    # Distinguish the new grub menuentry with '$_ovl_dir ~'.
+    [ "$ovl_dir" = LiveOS ] && unset -v _ovl_dir
+    sed -i -r "1 s/^\s*set\s+default=.*/set default=0/
+s/^\s*set\s+timeout=.*/set timeout=60/
+/^\s*menuentry/ {
+s/\S+\s+~$_TITLE/$_TITLE/
+s;(^menuentry\s+).*$_TITLE.*('|\");\1\2Start w/persistence ${_ovl_dir:+$_ovl_dir\ ~}$_TITLE\2;
+}
+s/^search\s+.*/### BEGIN/
+/^\s*(search|for|initrds|done)\>/ d
+/^\s*insmod\s+(ext2|fat|xfs|f2fs|btrfs)\>/ d
+/^\s*menu_item/ d
+s/(^submenu ('|\")Troubleshoot).* \{$/\1 -->\2 \{/
+/^\s+linux|initrd/ {
+s;(linux|initrd)(\S*)\s+\S+(linux|vmlinuz.?|initrd|initrd.?\.img);\1\2 /$_BOOTDIR/\3;
+s/\s+initrd=\S+//
+s/\s+rootflags=\S*//
+s/\<rd\.live\.\S+\s*//g
+s/\s+(ro|rw)(\s+|$)/ /
+s;iso-scan/filename=\S+ ; ;
+s/root=live:\S+ /root=live:CDLABEL=placeholder /
+    /\s+(\\$\\{basicgfx\\}|nomodeset)($|\s+)/ {
+s/\s+(\\$\\{basicgfx\\}|nomodeset)($|\s+)/ \1 rd\.debug\2/
+s/\s+(quiet|rhgb|splash)\s+(quiet|rhgb|splash)\s+/ /
+    }
+}" "$GRUB_cfg"
+
+    ovl=$(readlink /run/overlayfs)
+    ovl_spec=UUID="${p_ptUUID}":"${ovl#"$mntDir"}"
+    ovl_spec="$(escape "$ovl_spec")"
+
+    # Update menu entries for the new installation.
+    rootcfg=UUID=$UUID
+
+    cfgargs="${ROOTFLAGS:+ rootflags=$ROOTFLAGS}"
+    cfgargs="$(escape "$cfgargs")"
+    rootcfg="$rootcfg${_ovl_dir:+ rd.ovl.dir=$_ovl_dir}"
+    rootcfg="$(escape "$rootcfg")"
+    [ "$IMG" = initrd.img ] && IMG=initrd*.img
+
+    # shellcheck disable=SC2016
+    sed -i -r "/^### BEGIN/ i\
+insmod fat\\
+search --no-floppy --efidisk-only --set esp -u ${esp_uuid}
+               /^\s*linux/ {
+               i\
+\    for f in (\$esp)/${_ovl_dir:=LiveOS}/$_BOOTDIR/$IMG*; do\\
+\        initrds=\"\$initrds \$f\"\\
+\    done
+               s|root=live:CDLABEL=\S+\s+(rd\.overlay\S*\s*)?|root=live:$rootcfg rw${ovl_spec:+ rd\.overlay=$ovl_spec} ${cfgargs:+$cfgargs }|
+               }
+               /^\s+linux|initrd/ {
+               s;(\s*(linux|initrd)\S*\s+).*(/$_BOOTDIR);\1(\$esp)/$_ovl_dir\3;
+               }
+               /^### BEGIN/,$ {
+               s/(^\s*initrd\S*\s+)\S+/\1\$initrds/
+               s/(^submenu ('|\"))Troubleshoot.* \\{$/\1   Alternative boots \^ for the above image \^ -->\2 \\{/
+               }
+               /^\s*submenu\s+/ a\
+\	${root_arg:+root_arg=$root_arg}\\
+\	menu_item 'Start a pristine, transient $_TITLE' '$_BOOTDIR' '' (\$esp)/'$_ovl_dir' '$rootcfg' 'rd.overlay $cfgargs'\\
+\	menu_item 'Start the saved -$_ovl_dir- image readonly via a RAM overlay' '$_BOOTDIR' '' (\$esp)/'$_ovl_dir' '$rootcfg' 'rd.ovl.flags=ro rd.overlay.readonly rd.overlay=$ovl_spec $cfgargs'\\
+\	menu_item 'Make a new, persistent overlay directory for the base image' '$_BOOTDIR' '' (\$esp)/'$_ovl_dir''${rootcfg% rd\.ovl\.dir*}' 'rd.ovl.dir=PROMPT rd.overlay=$ovl_spec $cfgargs'\\
+\	menu_item 'Format a new, persistence partition for the -$_ovl_dir- base image' '$_BOOTDIR' '' (\$esp)/'$_ovl_dir' '${rootcfg% rd\.ovl\.dir*}' 'rd.ovl.dir=PROMPT rd.overlay=PROMPTSZ,PROMPTFS $cfgargs'\\
+\	menu_item 'Reset any persistent overlay & start the -$_ovl_dir- base image' '$_BOOTDIR' '' (\$esp)/'$_ovl_dir' '$rootcfg' 'rd.overlay.reset rd.overlay=$ovl_spec $cfgargs'
+               /^\s*menuentry\s+/ {
+               s;(Start \S+).*(in basic graphics mode).*('|\");Start the -$_ovl_dir- image \2 w/debug log\3;
+               }
+               /^\s*$/ d
+" "$GRUB_cfg"
+
+    if [ ! -f "$GRUB_cfg".multi ]; then
+        # Retrieve ISOSCAN block, if present on first configuration.
+        sed -n -r '/^### ISOSCAN/, /^### end_ISOSCAN/ w /tmp/isoscan' "$GRUB_cfg".prev
+        [ -s /tmp/isoscan ] && cat /tmp/isoscan >> "$GRUB_cfg"
+    else
+        # Case of previous installation, insert ... & null lines after stanzas.
+
+        sed -i -r '1 i\
+...
+        /^### BEGIN/,$ {
+        /^\}$/ a
+
+}' "$GRUB_cfg".multi
+
+        # Collect null-separated stanzas into single lines exchanged to pattern space.
+        # Remove each menuentry stanza with conflicting bootpath and root ID:
+        rootcfg=${rootcfg%% *}
+        sed -i -r "/./ {H;\$!d};x
+        /^### BEGIN/,/^### ISOSCAN/ {
+        s;.*\/$_ovl_dir\/.* root=live:$rootcfg .*;;}" "$GRUB_cfg".multi
+
+        # Append other pre-existing menus.
+        cat "$GRUB_cfg".multi >> "$GRUB_cfg"
+
+        # Clear header & null lines that came from $GRUB_cfg.multi.
+        sed -i -r '/^\.\.\.$/,/^\s*menuentry\s+/ {
+               /^\s*menuentry\s+/ ! d}
+               /^### BEGIN/,$ {
+               /^\s*$/ d}' "$GRUB_cfg"
+        rm "$GRUB_cfg".multi
+    fi
+
+    local diskdev dev sys_p vend mod rev ser sz
+    read -r diskdev < /run/initramfs/diskdev
+    dev="${diskdev##*/}"
+    sys_p=/sys/class/block/"$dev"
+
+    # Note: NVMe may store these differently; we check existence first
+    vend=N/A
+    mod=N/A
+    rev=N/A
+    [ -f "$sys_p"/device/vendor ] && read -r vend < "$sys_p"/device/vendor
+    [ -f "$sys_p"/device/model ] && read -r mod < "$sys_p"/device/model
+    [ -f "$sys_p"/device/rev ] && read -r rev < "$sys_p"/device/rev
+
+    ser=''
+    if [ -f "$sys_p"/device/serial ]; then
+        read -r ser < "$sys_p"/device/serial
+    elif [ -f "$sys_p"/device/device/serial ]; then
+        read -r ser < "$sys_p"/device/device/serial
+    elif [ -f "$sys_p"/uevent ]; then
+        while read -r line; do
+            case "$line" in ID_SERIAL_SHORT=*) ser="${line#*=}" ;; esac
+        done < "$sys_p"/uevent
+    fi
+    [ "$ser" ] || ser=$(udevadm info -q property --value --property=ID_SERIAL_SHORT $diskdev)
+    ser="${ser:-N/A}"
+
+    read -r sectors < "$sys_p"/size
+    sz="$(((sectors * 10 + (1 << 20)) / (1 << 21)))"
+    if [ "$sz" -lt 10 ]; then
+        sz=0."$sz "GiB
+    else
+        w="${sz%?}"
+        t="${sz#$w}"
+        sz="$w.$t "GiB
+    fi
+
+    set -- "$diskdev" "$vend" "$mod" "$rev" "$ser" "$sz"
+
+    target="$(escape "$@")"
+    SERIAL="$(escape "ser")"
+    # Update ISOSCAN menu_item for current persistence partition & disc.
+    sed -i -r "s/(\s+rd\.(overlay|live\.image)=UUID=)[-a-fA-F0-9]+( |,\S+ )/\1${ovl_uuid}\3/
+        s;(serial=).*(\/serial\/);\1$SERIAL\2;
+        s/(TARGET: ').*'/\1$target'/" "$GRUB_cfg"
+
+    [ -b /run/initramfs/p_pt ] && {
+        # Condition of newly created persistence partition.
+        sed -i -r "/^### ISOSCAN/, /^### end_ISOSCAN/ !{
+s|rd\.overlay=\S*|rd\.overlay=$ovl_spec ${ROOTFLAGS:+rootflags=$ROOTFLAGS }|
+s;(serial=.*/)\S*;\1 rd\.overlay=$ovl_spec ${ROOTFLAGS:+rootflags=$ROOTFLAGS };
+}" "$GRUB_cfg"
+    }
+    [ -e "$GRUB_cfg".set ] || set_flag
+}
+
+set_flag() {
+    # Set a flag file to record completion of this function.
+    : > "$GRUB_cfg".set
+}
