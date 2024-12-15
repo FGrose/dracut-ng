@@ -457,7 +457,6 @@ parse_cfgArgs() {
                 ISS=${1%%/serial/*}
                 diskDevice=$(ID_SERIAL_SHORT_to_disc "${ISS#serial=}")
                 ln -sf "$diskDevice" /run/initramfs/diskdev
-                get_partitionTable "$diskDevice"
                 ptSpec=${1#*/serial/}
                 [ "$ptSpec" ] && {
                     case "$ptSpec" in
@@ -474,6 +473,10 @@ parse_cfgArgs() {
             auto)
                 espStart=1
                 cfg=ovl
+                ;;
+            esp=*)
+                szESP=${1#esp=}
+                espStart=1
                 ;;
             ea=?*)
                 extra_attrs="${*}"
