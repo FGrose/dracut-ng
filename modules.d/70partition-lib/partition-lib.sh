@@ -775,7 +775,6 @@ parse_cfgArgs() {
                 ISS=${1%%/serial/*}
                 diskDevice=$(ID_SERIAL_SHORT_to_disc "${ISS#serial=}")
                 echo "$diskDevice" > /run/initramfs/diskdev
-                get_partitionTable "$diskDevice"
                 ptSpec=${1#*/serial/}
                 [ "$ptSpec" ] && {
                     case "$ptSpec" in
@@ -792,6 +791,10 @@ parse_cfgArgs() {
             auto)
                 espStart=1
                 cfg=ovl
+                ;;
+            esp=*)
+                szESP=${1#esp=}
+                espStart=1
                 ;;
             ea=?*)
                 extra_attrs="${*}"
@@ -896,18 +899,6 @@ prep_Partition() {
     optimize() {
         eval "$2"=$((($1 + optimalIO - 1) / optimalIO * optimalIO))
     }
-    [ "$espStart" ] && {
-        # Format ESP.
-        espStart=${2%B}
-        freeSpaceStart=$((espStart + (${szESP:=$(get_sz_forESP)} << 20) + 1))
-
-        optimize "$espStart" espStart
-
-        if [ -d /run/initramfs/isoscan ]; then
-            isoscandev="$(readlink -f /run/initramfs/isoscandev)"
-            isofile="$(readlink -f /run/initramfs/isofile)"
-        fi
-    }
 
     [ "$espStart" ] && {
         # Format ESP.
@@ -916,10 +907,7 @@ prep_Partition() {
 
         optimize "$espStart" espStart
 
-        if [ -d /run/initramfs/isoscan ]; then
-            read -r isoscandev < /run/initramfs/isoscandev
-            read -r isofile < /run/initramfs/isofile
-        fi
+        [ -d /run/initramfs/isoscan ] && read -r isofile < /run/initramfs/isofile
     }
 
     partitionStart=$freeSpaceStart
