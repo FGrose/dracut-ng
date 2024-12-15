@@ -56,9 +56,8 @@ do_overlayfs() {
         # shellcheck disable=SC2046
         set -- $(findmnt -d backward -fnro TARGET "$ovl_pt")
         if [ "$1" ]; then
-            # [ "$1" = "$mntDir" ] || mount --bind "$1" "$mntDir"
             # We need $ovl_pt writable for overlay storage
-            [ -w "$mntDir" ] || mount -o remount,rw "$mntDir"
+            [ ! -w "$mntDir" ] && [ ! "$readonly_overlay" ] && mount -o remount,rw "$mntDir"
         else
             [ "$p_ptFlags" ] || set_FS_options "${p_ptfsType:=$(blkid --probe --match-tag TYPE --output value --usages filesystem "$ovl_pt")}"
             mount_p_Partition
