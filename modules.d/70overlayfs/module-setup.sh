@@ -6,7 +6,7 @@ check() {
 }
 
 depends() {
-    echo base
+    echo base distribution-live-lib
 }
 
 installkernel() {
@@ -18,6 +18,7 @@ install() {
         if dracut_module_included "systemd-initrd"; then
             inst_script "$moddir/overlayfs-generator.sh" "$systemdutildir"/system-generators/dracut-overlayfs-generator
         fi
+        inst_hook pre-pivot 20 "$moddir/pre-pivot-actions.sh"
         inst_hook cmdline 30 "$moddir/parse-overlayfs.sh"
         inst_hook pre-udev 30 "$moddir/overlayfs-genrules.sh"
         inst_script "$moddir/root-overlayfs.sh" "/sbin/root-overlayfs"

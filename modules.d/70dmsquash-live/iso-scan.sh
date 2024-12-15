@@ -32,7 +32,7 @@ setup_isoloop() {
         # Overlay and .iso source are on the same partition.
         type det_fs > /dev/null 2>&1 || . /lib/fs-lib.sh
         p_ptfsType=$(det_fs "$p_pt")
-        command -v set_FS_options > /dev/null || . /lib/overlayfs-lib.sh
+        command -v set_FS_options > /dev/null || . /lib/distribution-live-lib.sh
         set_FS_options "$p_ptfsType"
         # Repurpose 99-mount-root.sh for the overlay's & source partition.
         . "$hookdir"/mount/99-mount-root.sh
