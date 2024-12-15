@@ -1228,7 +1228,7 @@ such as with btrfs, ext4, f2fs, & xfs.  On non-vfat-formatted devices, a
 persistent OverlayFS overlay can extend the available root filesystem storage
 up to the capacity of the designated persistence disk device.
 
-For live media images, see the **Booting live images** section below.
+For live media images, see the link:https://github.com/dracut-ng/dracut-ng/edit/main/man/dracut.cmdline.7.adoc#booting-live-images[*Booting live images*] section below.
 
 **rd.overlay=**{[1|__<source_name>__]|[,__<devspec>__[:__<pathspec>__]][,subvol=<subvol_path>]|0|no|off}::
 Enables the use of the *OverlayFS* kernel module ('overlay'), if available,
@@ -1238,7 +1238,7 @@ Apply a temporary OverlayFS overlay to a standard block root partition by
 entering simply **rd.overlay** on the kernel command line.
 +
 Apply a persistent OverlayFS overlay to a standard block root partition by
-adding the optional arguments to this parameter.
+adding the _<devspec>:<pathspec>_ arguments to this parameter.
 +
 IMPORTANT: If changes to the base root filesystem are made when the OverlayFS
 is unmounted or offline, subsequent behavior of the mounted overlay may be
@@ -1399,20 +1399,20 @@ snapshot of the root filesystem or the OverlayFS mount will use an additional
 lower layer with the root filesystem.
 --
 
-**rd.live.image**[=__esp[=<sizeMiB>__]::
+**rd.live.image**[=__esp[=<sizeMiB>]__]::
 This parameter without an argument supports the legacy syntax of passing just
-the base root filesystem partition **root=**__<path to blockdevice>__ instead
-of **root=**live:__<path to blockdevice>__ to indicate a live boot.
+the base root filesystem partition *root=_<path to blockdevice>_* instead
+of *root=live:_<path to blockdevice>_*.
 With argument
-* *_esp[=<sizeMiB>]_* create a new EFI System Partition on the boot media with
-the size specified.  The existing ESP will be replaced by a copy in the new
-partition, and the source directory with the boot kernel and initrd files will
-be copied into the **rd.live.dir=**__<path>__ directory of the new ESP.  These
-files will be bind mounted onto their counterparts in the root filesystem /boot
-directory to facilitate programmatic updates.  The default *_<sizeMiB>_* is
-512 MiB for disks smaller than 32 GiB and another 256 MiB is added to the
-default per 16 GiB of end-of-disk free space.
-+
+* *_esp[=<sizeMiB>]_* a new EFI System Partition will be created on the boot
+media with the size specified.  The existing ESP will be replaced by a copy in
+a new partition, and the image directory with the boot kernel {`vmlinux|linux`}
+and {`initrd.img|initrd`} files will be copied into the *rd.live.dir=_<path>_*
+directory of the new ESP.  These files will be bind mounted onto their
+counterparts in the root filesystem /boot/ directory to facilitate programmatic
+updates.  The default *_<sizeMiB>_* is 512 MiB for disks smaller than 32 GiB
+and another 256 MiB is added to the default per 16 GiB of end-of-disk free
+space.
 NOTE: When a target disk is partitioned by a **rd.live.overlay=** directive,
 a new, default ESP will be created automatically and the esp parameter can be
 omitted.
@@ -1533,16 +1533,32 @@ By default, this is __squashfs.img__.
 
 **rd.live.ram=**1::
 Copy the complete image to RAM and use this for booting. This is useful
-when the image resides on, e.g., a DVD which needs to be ejected later on.
+when the image resides on, _e.g._, a DVD which needs to be ejected later on.
 
-**rd.overlay=**{[{__<size>__|PROMPTSZ}[,{__<fstype>__|PROMPTFS}[,recreate[=__<devspec>__][,__<devspec>__[:{__<pathspec>__|auto}[,ea=__<extra_attr__,__s>__]]]]]]|none}::
-Manage the usage of a persistent overlay.
+**rd.overlay=**{[{__<size>__|PROMPTSZ}[,{__<fstype>__|PROMPTFS}[,recreate[=__<devspec>__][,__<devspec>__[:{__<pathspec>__|auto}[,ea=__<extra_attr__,__s>__]]]]]]]|none}::
+Manage the specification of a persistent overlay that can be used to save
+changes made to the root filesystem within the +
+**root=**live:__<path to blockdevice>__ or **root=**live:__<url>__ device.
 +
+The default _pathspec_, when *:auto* or no **:**__<pathspec>__ is given, is
+`/<rd.live.dir>/overlay-<label>-<uuid>`, where _<label>_ and _<uuid>_ are the
+LABEL and UUID of the filesystem specified by the
+**root=**live:__<path|url>__ device.
++
+If a persistent overlay __is detected__ at the standard LiveOS path, and
+_rd.overlay_ is not set to 1, the overlay type (either Device-mapper or
+OverlayFS) will be detected and it will be used.
++
+--
 * The parameter with no or any of the filesystem related or *_<size>_*
 arguments specifies the creation of a persistence partition named 
 __LiveOS_persist__ for the overlay in adequate free space at the end of the
-**root=**live:__<device specification>__ disk on its first boot. A distribution
-specific library module should adjust the boot menu for subsequent boots.
+**root=**live:__<device specification>__ disk on its first boot.
++
+NOTE: The operating system distribution should supply a _dracut_
+<distribution>-live-lib module to edit the boot loader menu so that subsequent
+ boots will ignore any filesystem related or partition size arguments.
++
 * *_<size>_* specifies a partition size in gigabytes for the partition. If
 a size is not provided, the partition will be made the size of the free space
 at the end of the disk device. A minimum of 256 MiB of free space is required.
@@ -1566,14 +1582,9 @@ partition no larger than the contiguous free space at the one destroyed. If no
 _<devspec>_ is provided, the partition named __LiveOS_persist__ on the root
 bearing disk will be targeted. Useful for changing the partition size or
 filesystem type or attributes. *All* saved content in the partition is lost.
-Compare: **rd.overlayfs.reset** will only destroy the OverlayFS upper
+Compare: **rd.overlay.reset** will only destroy the OverlayFS upper
 directory and then recreate an empty replacement.
 * *_<devspec>_* specifies the path to a device with a mountable filesystem.
-* *_<pathspec>_* is a path within the _<devspec>_ filesystem to either a file
-(that is loop mounted for a Device-mapper overlay) or a directory (that is
-symbolically linked to `/run/overlayfs` for a OverlayFS mount overlay). (A
-required sister directory `/<pathspec>/../ovlwork` is automatically made.)
-* _none_ (the word itself) specifies that no overlay will be used, such as
 *_<devspec>_* may be in the form of
 +
 {`serial=<devserial>/serial/<partspec>|UUID=?*|PARTUUID=?*|LABEL=?*|PARTLABEL=?*|/dev/?*`}
@@ -1639,7 +1650,7 @@ OverlayFS configuration. The _<source_name>_ is written to the *rd.overlay=*
 parameter in `/etc/kernel/cmdline` for consumption by the _overlayfs_ module
 code.
 +
-See the *OverlayFS* section introduction above.
+See the link:https://github.com/dracut-ng/dracut-ng/blob/main/man/dracut.cmdline.7.adoc#overlayfs[*OverlayFS*] section introduction above.
 
 **rd.overlay.readonly=**1::
 This is used to boot in a read-only mode with a normally read-write persistent
