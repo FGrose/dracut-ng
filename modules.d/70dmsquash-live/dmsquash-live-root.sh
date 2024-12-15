@@ -32,6 +32,7 @@ uuid="${uuid%%\"*}"
 label="${devInfo#*LABEL=\"}"
 label="${label%%\"*}"
 
+echo "$uuid" > /run/initramfs/live_uuid
 load_fstype "$livedev_fstype"
 live_dir=$(getarg rd.live.dir) || live_dir=LiveOS
 roroot_image=$(getarg rd.live.rorootimg -d -y rd.live.squashimg) || roroot_image=squashfs.img
