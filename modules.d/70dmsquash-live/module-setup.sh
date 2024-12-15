@@ -9,9 +9,16 @@ check() {
 
 # called by dracut
 depends() {
+    # Determine distribution in order to select
+    #   the appropriate <distribution>-live-lib dependency.
+    local dist
+    dist=$(get_os_release_datum ID)
+    dist=${dist#\"}
+    dist=${dist%\"}
+
     # if dmsetup is not installed, then we cannot support fedora/red hat
     # style live images
-    echo dm rootfs-block img-lib overlayfs initqueue partition-lib
+    echo dm rootfs-block img-lib overlayfs initqueue partition-lib "${dist:-distribution}"-lib distribution-lib
     return 0
 }
 
@@ -28,7 +35,7 @@ install() {
     inst_hook cmdline 31 "$moddir/parse-iso-scan.sh"
     inst_hook pre-udev 30 "$moddir/dmsquash-live-genrules.sh"
     inst_hook pre-udev 30 "$moddir/dmsquash-liveiso-genrules.sh"
-    inst_hook pre-pivot 20 "$moddir/apply-live-updates.sh"
+    inst_hook pre-pivot 52 "$moddir/dmsquash-live-pre-pivot-actions.sh"
     inst_script "$moddir/dmsquash-live-root.sh" "/sbin/dmsquash-live-root"
     inst_script "$moddir/iso-scan.sh" "/sbin/iso-scan"
     inst_script "$moddir/../74rootfs-block/mount-root.sh" "/sbin/mount-root"
