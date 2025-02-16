@@ -5,7 +5,7 @@ SourcPath=/usr/lib/dracut/modules.d/70overlayfs/overlayfs-generator.sh
 command -v getarg > /dev/null || . /lib/dracut-lib.sh
 
 OverlayFS="$(getarg rd.overlayfs)" || exit 0
-load_fstype overlay || die 'OverlayFS is required but unavailable.'
+load_fstype overlay || Die 'OverlayFS is required but unavailable.'
 
 case "${OverlayFS%%[=/]*}" in
     0 | no | off) exit 0 ;;

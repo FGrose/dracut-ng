@@ -17,7 +17,7 @@ PATH=/usr/sbin:/usr/bin:/sbin:/bin
 root_pt="$1"
 ln -s "$root_pt" /run/initramfs/root_pt
 
-load_fstype overlay || die 'OverlayFS is required but unavailable.'
+load_fstype overlay || Die 'OverlayFS is required but unavailable.'
 
 rd_overlayfs=$(getarg rd.overlayfs) && {
     case "${rd_overlayfs%%[=/,]*}" in
@@ -67,7 +67,7 @@ if load_fstype "$root_ptfsType"; then
     fstype="${root_ptfsType:-auto}" srcPartition="$root_pt" mountPoint=/run/rootfsbase srcflags="$rflags" "$mntcmd" override
     findmnt /run/rootfsbase > /dev/null 2>&1 || die "Unable to mount $root_pt."
 else
-    die "The root filesystem driver, $root_ptfsType, is unavailable."
+    Die "The root filesystem driver, $root_ptfsType, is unavailable."
 fi
 
 ovl_dir=$(getarg rd.ovl.dir) || ovl_dir=RootOvl
