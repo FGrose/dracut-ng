@@ -2,12 +2,19 @@
 
 command -v getarg > /dev/null || . /lib/dracut-lib.sh
 
-getargbool 0 rd.overlayfs -d rd.live.overlay.overlayfs || return 0
+OverlayFS=$(getarg rd.overlayfs) || exit 0
 
-ismounted LiveOS_rootfs || {
-    getargbool 0 rd.overlayfs.readonly -d rd.live.overlayfs.readonly && readonly_overlay="--readonly"
+command -v get_ovl_pt > /dev/null || . /lib/overlayfs-lib.sh
+volatile=volatile
+get_ovl_pt "$OverlayFS" os_rootfs OverlayFS
+[ "$OverlayFS" = off ] && exit 0
+
+findmnt "${ovlfs_name:=os_rootfs}" > /dev/null 2>&1 || {
+    [ -h /run/overlayfs ] && getargbool 0 rd.overlayfs.readonly \
+        && readonly_overlay=--readonly
 
     basedirs=lowerdir=${readonly_overlay:+/run/overlayfs-r:}/run/rootfsbase
 
-    mount -t overlay LiveOS_rootfs -o "$basdirs",upperdir=/run/overlayfs,workdir=/run/ovlwork "$NEWROOT"
+    mount -t overlay "$ovlfs_name" \
+        -o "$basedirs",upperdir=/run/overlayfs,workdir=/run/ovlwork "$NEWROOT"
 }
