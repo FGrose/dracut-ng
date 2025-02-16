@@ -4,7 +4,7 @@
 command -v getarg > /dev/null || . /lib/dracut-lib.sh
 
 if OverlayFS="$(getarg rd.overlayfs -d -y rd.live.overlay.overlayfs)"; then
-    load_fstype overlay || die 'OverlayFS is required but unavailable.'
+    load_fstype overlay || Die 'OverlayFS is required but unavailable.'
     command -v get_ovl_pt > /dev/null || . /lib/overlayfs-lib.sh
     ovl_pt=$(getarg rd.live.overlay -d overlay) || {
         ovl_pt="$OverlayFS"
