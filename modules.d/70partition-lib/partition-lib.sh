@@ -18,7 +18,7 @@ get_partitionTable() {
     [ "$szDisk" = ' unrecognised disk label
 ' ] && {
         # Includes case of raw, unpartitioned disk.
-        run_parted "$1" -m mklabel gpt || die "Failed to make partition table on $1."
+        run_parted "$1" -m mklabel gpt || Die "Failed to make partition table on $1."
         get_partitionTable "$1"
     }
 }
@@ -124,7 +124,7 @@ parse_cfgArgs() {
 prep_Partition() {
     if [ "$p_Partition" ]; then
         if ! [ -b "$p_Partition" ]; then
-            die "The specified persistence partition, $p_Partition, is not recognized."
+            Die "The specified persistence partition, $p_Partition, is not recognized."
         else
             info "Skipping overlay creation: a persistence partition already exists."
             rd_live_overlay="$p_Partition"
