@@ -89,7 +89,15 @@ parse_cfgArgs() {
 prep_Partition() {
     [ "$p_Partition" ] && [ ! -b "$p_Partition" ] \
         && die "The specified persistence partition, $p_Partition, is not recognized."
-
+    if [ "$p_Partition" ]; then
+        info "Skipping overlay creation: a persistence partition already exists."
+        rd_live_overlay="$p_Partition"
+        ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.live.overlay=$p_Partition rd.live.overlay.overlayfs"
+        return 0
+    elif [ ! "$rd_live_overlay" ]; then
+        info "Skipping overlay creation: kernel command line parameter 'rd.live.overlay' is not set."
+        return 1
+    fi
     OLDIFS="$IFS"
     IFS='
 '
@@ -143,6 +151,7 @@ prep_Partition() {
         type "$newPtNbr" ccea7cb3-70ba-4c31-8455-b906e46a00e2 \
         set "$newPtNbr" no_automount on
     udevadm trigger --name-match "$p_Partition" --action add --settle > /dev/null 2>&1
+    ln -sf "$p_Partition" /run/initramfs/p_pt
 
     [ "${p_ptFlags+set}" ] || set_FS_options "${p_ptfsType:-ext4}" p_ptFlags
     mkfs_config "${p_ptfsType:=ext4}" LiveOS_persist $((partitionEnd - partitionStart + 1)) "${extra_attrs}"
