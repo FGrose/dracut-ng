@@ -54,7 +54,15 @@ parse_cfgArgs() {
 prep_Partition() {
     [ "$p_Partition" ] && [ ! -b "$p_Partition" ] \
         && die "The specified persistence partition, $p_Partition, is not recognized."
-
+    if [ "$p_Partition" ]; then
+        info "Skipping overlay creation: a persistence partition already exists."
+        rd_live_overlay="$p_Partition"
+        ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.live.overlay=$p_Partition rd.live.overlay.overlayfs"
+        return 0
+    elif [ ! "$rd_live_overlay" ]; then
+        info "Skipping overlay creation: kernel command line parameter 'rd.live.overlay' is not set."
+        return 1
+    fi
     OLDIFS="$IFS"
     IFS='
 '

@@ -4,7 +4,7 @@
 
 [ -z "$root" ] && root=$(getarg root=)
 
-# support legacy syntax of passing liveimg and then just the base root
+# support legacy syntax of passing rd.live.image and then just the base root
 if getargbool 0 rd.live.image; then
     liveroot="live:$root"
 fi
