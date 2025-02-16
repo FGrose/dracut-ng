@@ -2,20 +2,22 @@
 
 command -v getarg > /dev/null || . /lib/dracut-lib.sh
 
-getargbool 0 rd.overlayfs -d rd.live.overlay.overlayfs && OverlayFS="yes"
-getargbool 0 rd.live.overlay.reset && reset_overlay="yes"
+getargbool 0 rd.overlayfs || return 0
 
-if [ -n "$OverlayFS" ]; then
-    if ! [ -e /run/rootfsbase ]; then
-        mkdir -m 0755 -p /run/rootfsbase
-        mount --bind "$NEWROOT" /run/rootfsbase
-    fi
+if ! [ -e /run/rootfsbase ]; then
+    mkdir -m 0755 -p /run/rootfsbase
+    mount --bind "$NEWROOT" /run/rootfsbase
+fi
 
-    mkdir -m 0755 -p /run/overlayfs
-    mkdir -m 0755 -p /run/ovlwork
-    if [ -n "$reset_overlay" ] && [ -h /run/overlayfs ]; then
+if [ -h /run/overlayfs ]; then
+    # Persistent overlays
+    if getargbool 0 rd.overlayfs.reset; then
         ovlfsdir=$(readlink /run/overlayfs)
         info "Resetting the OverlayFS overlay directory."
-        rm -r -- "${ovlfsdir:?}"/* "${ovlfsdir:?}"/.* > /dev/null 2>&1
+        rm -r -- "${ovlfsdir:?}" > /dev/kmsg 2>&1
+        mkdir -p "$ovlfsdir"
     fi
+else
+    # For temporary overlays:
+    mkdir -m 0755 -p /run/overlayfs /run/ovlwork
 fi
