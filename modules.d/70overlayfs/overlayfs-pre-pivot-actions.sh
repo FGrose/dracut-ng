@@ -1,7 +1,7 @@
 #!/bin/sh
 type getarg > /dev/null 2>&1 || . /lib/dracut-lib.sh
 
-getargbool rd.overlayfs || return 0
+getargbool rd.overlay || return 0
 
 if [ -h /run/overlayfs ]; then
     # Change SELinux context type for OverlayFS directories on non-virtual filesystems.
