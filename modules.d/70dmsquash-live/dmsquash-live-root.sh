@@ -14,6 +14,11 @@ command -v do_overlayfs > /dev/null || . /lib/overlayfs-lib.sh
 
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
+# Avoid re-triggering these rules.
+rm -- /etc/udev/rules.d/99-live-squash.rules \
+    /etc/udev/rules.d/99-liveiso-mount.rules > /dev/null 2>&1
+udevadm control --reload
+
 [ "$1" ] || exit 1
 livedev="$1"
 ln -s "$livedev" /run/initramfs/livedev
@@ -46,7 +51,7 @@ get_diskDevice() {
             ;;
         lsblk:)
             # shellcheck disable=SC3028,SC2128
-            die "get_diskDevice() failed near $BASH_SOURCE@LINENO:$((LINENO - 18)) ${FUNCNAME:+$FUNCNAME()} 
+            Die "get_diskDevice() failed near $BASH_SOURCE@LINENO:$((LINENO - 18)) ${FUNCNAME:+$FUNCNAME()} 
     > $* <"
             ;;
     esac
@@ -121,7 +126,7 @@ rd_live_check() {
         if [ $? -eq 1 ]; then
             warn "Media check failed! We do not recommend using this medium. System will halt in 12 hours."
             sleep 43200
-            die "Media check failed!"
+            Die "Media check failed!"
             exit 1
         fi
         type plymouth > /dev/null 2>&1 && plymouth --show-splash
@@ -158,7 +163,7 @@ rd_live_overlay=$(getarg rd.live.overlay) && {
 mkdir -m 0755 -p /run/initramfs/live
 case "$livedev_fstype" in
     auto)
-        die "cannot mount live image (unknown filesystem type $livedev_fstype)"
+        Die "cannot mount live image (unknown filesystem type $livedev_fstype)"
         ;;
     iso9660)
         [ -f "$livedev" ] && {
@@ -189,7 +194,7 @@ esac
     # workaround some timing problem
     sleep 0.1
     $mntcmd -o ${liverw:-ro} "$livedev" /run/initramfs/live > /dev/kmsg 2>&1 \
-        || die "Failed to mount block device of live image."
+        || Die "Failed to mount block device of live image."
 }
 
 # overlay setup helper function
@@ -337,18 +342,18 @@ if [ -e "$SQUASHED" ]; then
     elif [ -d /run/initramfs/squashfs/usr ]; then
         FSIMG=$SQUASHED
         # If needed, adjust OverlayFS,
-        # or die if OverlayFS is required but unavailable.
+        # or Die if OverlayFS is required but unavailable.
         if [ -d /sys/module/overlay ]; then
             [ "$OverlayFS" ] || {
                 OverlayFS=LiveOS_rootfs
                 ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.overlayfs=LiveOS_rootfs"
             }
         else
-            die 'OverlayFS is required but unavailable.'
+            Die 'OverlayFS is required but unavailable.'
             exit 1
         fi
     else
-        die "Failed to find a root filesystem in $SQUASHED."
+        Die "Failed to find a root filesystem in $SQUASHED."
         exit 1
     fi
 else
@@ -416,7 +421,7 @@ if [ "$OverlayFS" ]; then
         # Reuse variable to hold OverlayFS mount source name.
         rd_live_overlay=LiveOS_rootfs
     else
-        [ -d /sys/module/overlay ] || die 'OverlayFS is required but unavailable.'
+        [ -d /sys/module/overlay ] || Die 'OverlayFS is required but unavailable.'
         # Support legacy case of OverlayFS over traditional root block device.
         ln -sf /run/initramfs/live /run/rootfsbase
         rd_live_overlay=os_rootfs
