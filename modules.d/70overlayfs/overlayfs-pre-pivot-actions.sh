@@ -1,19 +1,21 @@
 #!/bin/sh
-type getarg > /dev/null 2>&1 || . /lib/dracut-lib.sh
 
-getargbool rd.overlayfs || return 0
+# /run is mounted at $NEWROOT/run after switch_root;
+# bind-mount it in place so that updates for /run actually land in /run.
+mount -o bind /run "$NEWROOT"/run
 
-if [ -h /run/overlayfs ]; then
-    # Change SELinux context type for OverlayFS directories on non-virtual filesystems.
-    "$NEWROOT"/usr/bin/chcon system_u:object_r:root_t:s0/usr/bin/chcon system_u:object_r:root_t:s0 /run/overlayfs /run/ovlwork
-else
-    # Change SELinux context type for OverlayFS directories on virtual filesystems.
+if [ -d /run/ovl/upperdir ]; then
+    # Setup service for post switch-root relabelling of virtual filesystem objects.
     cp /usr/lib/systemd/system/overlayfs-root_t.service "$NEWROOT"/usr/lib/systemd/system/overlayfs-root_t.service
     cp /usr/bin/overlayfs-root_t.sh "$NEWROOT"/usr/bin/overlayfs-root_t.sh
     mkdir "$NEWROOT"/usr/lib/systemd/system/local-fs-pre.target.wants
     ln -sf ../overlayfs-root_t.service \
         "$NEWROOT"/usr/lib/systemd/system/local-fs-pre.target.wants/overlayfs-root_t.service
+else
+    # Change SELinux context type for OverlayFS directories on non-virtual filesystems.
+    "$NEWROOT"/usr/bin/chcon system_u:object_r:root_t:s0 "$NEWROOT" /run/overlayfs /run/ovlwork
 fi
 
 # Hide the base rootfs mountpoint on non-live boots.
 ismounted /run/initramfs/live || umount -l /run/rootfsbase
+umount "$NEWROOT"/run
