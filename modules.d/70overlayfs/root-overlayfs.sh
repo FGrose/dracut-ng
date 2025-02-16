@@ -14,7 +14,7 @@ PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
 [ "$1" ] || exit 1
 ovl_pt=$(getarg rd.overlayfs) || exit 0
-load_fstype overlay || die 'OverlayFS is required but unavailable.'
+load_fstype overlay || Die 'OverlayFS is required but unavailable.'
 
 root_pt="$1"
 get_ovl_pt os_rootfs ovl_pt
@@ -55,7 +55,7 @@ if load_fstype "$root_ptfsType"; then
         findmnt /run/rootfsbase || Die "Unable to mount $root_pt."
     }
 else
-    die "The root filesystem driver, $root_ptfsType, is unavailable."
+    Die "The root filesystem driver, $root_ptfsType, is unavailable."
 fi
 
 [ "$volatile" ] || {
