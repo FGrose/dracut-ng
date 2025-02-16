@@ -36,7 +36,7 @@ Standard
     specify the path to the init program to be started after the initramfs has
     finished
 
-**root=**__<path to blockdevice>__::
+**root=**__<device specification>__::
     specify the block device to use as the root filesystem.
 +
 [listing]
@@ -65,8 +65,8 @@ rootfstype=ext4
     mounted accordingly.
 
 **rd.ovl.flags=**__<mount options>__::
-    specify additional mount options for the partition bearing the root
-    filesystem OverlayFS overlay. If not set, _/etc/fstab_ will be parsed for
+    specify additional mount options for the partition bearing the OverlayFS
+    overlay for a filesystem. If not set, _/etc/fstab_ will be parsed for
     special mount options and mounted accordingly.
 
 **ro**::
@@ -77,7 +77,7 @@ rootfstype=ext4
     force mounting _/_ and _/usr_ (if it is a separate device) read-write.
     See also ro option.
 
-**rootfallback=**__<path to blockdevice>__::
+**rootfallback=**__<device specification>__::
     specify the block device to use as the root filesystem, if the normal root
     cannot be found. This can only be a simple block device with a simple file
     system, for which the filesystem driver is either compiled in, or added
@@ -1102,44 +1102,60 @@ rd.znet=ctc,0.0.0600,0.0.0601,protocol=bar
 
 OverlayFS
 ~~~~~~~~~
-Requires the dracut 'overlayfs' module.
+**root=ovl:**__<device specification>__::
+    specify the block device partition with a root filesystem that will be
+    mounted read-only and serve as the base for an OverlayFS mount.
 
-**rd.overlay**::
-Enables the use of the *OverlayFS* kernel module, if available, to provide a
-copy-on-write union directory for the root filesystem.  OverlayFS overlays are
-directories of the files that have changed on the read-only base (lower)
-filesystem.  The root filesystem is provided through a special overlay type
-mount that merges at least two directories, designated the lower and the upper.
-If an OverlayFS upper directory is not present on the boot device, a tmpfs
-directory will be created at `/run/overlayfs` to provide temporary storage.
-Persistent storage can be provided on vfat or msdos formatted devices by
-supplying the OverlayFS upper directory within an embedded filesystem that
-supports the creation of trusted.* extended attributes and provides a valid
-d_type in readdir responses, such as with btrfs, ext4, f2fs, & xfs.  On
-non-vfat-formatted devices, a persistent OverlayFS overlay can extend the
-available root filesystem storage up to the capacity of the LiveOS disk device.
-+
-The **rd.overlay.readonly** option, which allows a persistent overlayfs to
-be mounted read-only through a higher level transient overlay directory, has
-been implemented through the multiple lower layers feature of OverlayFS.
+Requires the dracut 'overlayfs' module that allows a base filesystem to be
+mounted read-only and have changes recorded, either temporarily or persistently
+in an OverlayFS overlay directory.
 
-**rd.overlay=**__{LABEL=<label>|UUID=<uuid>|PARTUUID=<uuid>|PARTLABEL=<label>|/dev/<device>}__::
-Specifies the storage device for persistent overlay (for both live images and
-regular OverlayFS).  When a block device is specified, it will be mounted and
-used for persistent overlay storage.  For live images with LABEL= specification,
-if the labeled partition does not exist, it will be automatically created using
-available free space on the device.
+OverlayFS overlays are directories of the files that have changed on a
+read-only base (lower) filesystem.  The full filesystem is provided through a
+special overlay type mount that merges at least two directories, designated the
+lower and the upper.  If an OverlayFS upper directory for a base root
+filesystem is not present at boot time, a tmpfs directory will be created at
+`/run/overlayfs` to provide temporary read-write storage.  Persistent storage
+can be provided on vfat or msdos formatted devices by supplying the OverlayFS
+upper directory within an embedded filesystem that supports the creation of
+trusted.* extended attributes and provides a valid d_type in readdir responses,
+such as with btrfs, ext4, f2fs, & xfs.  On non-vfat-formatted devices, a
+persistent OverlayFS overlay can extend the available root filesystem storage
+up to the capacity of the designated persistence disk device.
+
+For live media images, see the **Booting live images** section below.
+
+**rd.overlay=**{[1|__<source_name>__]|[,__<devspec>__[:__<pathspec>__]][,subvol=<subvol_path>]|0|no|off}::
+Enables the use of the *OverlayFS* kernel module ('overlay'), if available,
+to provide a copy-on-write union directory for the root filesystem.
 +
-Supported device specifications:
+Apply a temporary OverlayFS overlay to a standard block root partition by
+entering simply **rd.overlay** on the kernel command line.
 +
---
-* _LABEL=<label>_ - Use the device with the specified filesystem label.
-* _UUID=<uuid>_ - Use the device with the specified UUID.
-* _PARTUUID=<uuid>_ - Use the device with the specified partition UUID.
-* _PARTLABEL=<label>_ - Use the device with the specified partition label.
-* _/dev/<device>_ - Use the specified device path directly.
---
+Apply a persistent OverlayFS overlay to a standard block root partition by
+adding the optional arguments to this parameter.
 +
+IMPORTANT: If changes to the base root filesystem are made when the OverlayFS
+is unmounted or offline, subsequent behavior of the mounted overlay may be
+undefined if any of the “metacopy”, “index”, “xino” and “redirect_dir” features
+have been used. Avoid these features in the OverlayFS mount. (See
+https://docs.kernel.org/filesystems/overlayfs.html#changes-to-underlying-filesystems.)
+
+* {[1|*_<source_name>_*]} specifies an OverlayFS overlay, optionally setting
+the OverlayFS mount source name to _<source_name>_ instead of the default
+_os_rootfs_.
+* *_<devspec>_* specifies the path to a device with a mountable filesystem.
+* *_<pathspec>_* is a path within the *_<devspec>_* filesystem to a directory,
+which is symbolically linked to `/run/overlayfs` for a OverlayFS mount overlay.
+(A required sister directory `/<pathspec>/../ovlwork` is automatically made.)
++
+The default *_pathspec_*, is `/<rd.ovl.dir>/overlay-<label>-<uuid>`, where
+_<label>_ and _<uuid>_ are the LABEL and UUID of the filesystem specified by
+the **root=ovl:**__<device spec|url>__ specification.
++
+* *_subvol=<subvol_path>_* optionally provides a btrfs subvolume path on
+_<devspec>_ that will be added to the mount options for that device.
+
 [listing]
 .Examples
 ----
@@ -1148,13 +1164,37 @@ rd.overlay=UUID=12345678-1234-1234-1234-123456789abc
 rd.overlay=/dev/sdb1
 ----
 
+**rd.ovl.dir=**__<dirname>__::
+Specifies the directory within the persistence device where the OverlayFS
+upper directory can be found.  By default, this is `RootOvl`.
++
+The creation of a new OverlayFS overlay can be specified by including a new
+**rd.ovl.dir=**__<dirname>__ on the kernel commandline.
+
+**rd.overlay.readonly=**1::
+This is used to boot in a read-only mode with a normally read-write persistent
+overlay.  With this option an OverlayFS mount will link the persistent overlay
+directory to `/run/overlayfs‑r` as an additional read-only lower layer stacked
+under `/run/overlayfs`, the temporary, writable, upper directory overlay and
+over the base root filesystem to complete the bootable root filesystem.
+
+**rd.overlay.reset=**1::
+Specifies that a persistent overlay should be reset on boot.  All previous root
+filesystem changes are vacated by this action.
+
 Booting live images
 ~~~~~~~~~~~~~~~~~~~
+**root=live:**__<device specification>__::
+    specify the block device partition with a root filesystem that will be
+    mounted read-only and serve as the base for an OverlayFS mount or
+    Device-mapper snapshot.
+
 Requires the dracut 'dmsquash-live' module.
-Dracut offers multiple options for live booted images:
+Dracut offers multiple options for live booted images through the
+_dmsquash-live_ and _overlayfs_ modules.
 
 =====================
-SquashFS (read-only) base filesystem image:::
+SquashFS or EROFS (read-only) base filesystem image:::
 Note -- There are 3 separate overlay types available:
 - Device-mapper snapshots (the original offering),
 - Device-mapper thin provisioning snapshots (see _rd.live.overlay.thin_,
@@ -1164,8 +1204,8 @@ a later offering), and
 +
 --
 Using one of these technologies, the system will provide a writable overlay for
-the base, read-only SquashFS root filesystem. These methods enable a relatively
-fast boot and lower RAM usage.
+the base, read-only SquashFS or EROFS root filesystem. These methods enable a
+relatively fast boot and lower RAM usage.
 
 With the original Device-mapper snapshot overlay, users **must be careful** to
 avoid writing too many blocks to the snapshot device.  Once the blocks of the
@@ -1203,11 +1243,11 @@ to one half of the RAM total in the system. +
 The command: `mount -o remount,size=<nbytes> /run` will resize this virtual
 filesystem after booting.
 
-The internal SquashFS structure is traditionally expected to be:
+The internal SquashFS or EROFS structure is traditionally expected to be:
 
 [listing]
 ----
-squashfs.img          |  SquashFS from LiveCD .iso
+squashfs.img          |  SquashFS or EROFS from LiveCD .iso
    !(mount)
    /LiveOS
        |- rootfs.img  |  Usually a ext4 filesystem image to mount read-only
@@ -1218,12 +1258,12 @@ squashfs.img          |  SquashFS from LiveCD .iso
             ...       |
 ----
 
-For OverlayFS mount overlays, the internal SquashFS structure may be a direct
-compression of the root filesystem:
+For OverlayFS mount overlays, the internal SquashFS or EROFS structure may be a
+direct compression of the root filesystem:
 
 [listing]
 ----
-squashfs.img          |  SquashFS from LiveCD .iso
+squashfs.img          |  SquashFS or EROFS from LiveCD .iso
    !(mount)
    /bin               |  Base Live root filesystem
    /boot              |
@@ -1233,13 +1273,13 @@ squashfs.img          |  SquashFS from LiveCD .iso
 
 Dracut uses one of the overlay methods of live booting by default.  No
 additional command line options are required other than
-**root=**live:__<path to blockdevice>__ or **root=**live:__<URL>__ to specify
+**root=**live:__<device specification>__ or **root=**live:__<URL>__ to specify
 the location of your squashed root filesystem.
 
-- The compressed SquashFS image can be copied during boot to RAM at
+- The compressed SquashFS or EROFS image can be copied during boot to RAM at
 `/run/initramfs/squashed.img` by using the **rd.live.ram=1** option.
 - A device with a persistent overlay can be booted read-only by using the
-**rd.overlayfs.readonly** option on the kernel command line.  This will
+**rd.overlay.readonly** option on the kernel command line.  This will
 either cause a temporary, writable overlay to be stacked over a read-only
 snapshot of the root filesystem or the OverlayFS mount will use an additional
 lower layer with the root filesystem.
@@ -1249,7 +1289,7 @@ Uncompressed live filesystem image:::
 When the live system was installed with the '--skipcompress' option of the
 __livecd-iso-to-disk__ installation script for Live USB devices, the root
 filesystem image, __rootfs.img__, is expanded on installation and no SquashFS
-is involved during boot.
+or EROFS is involved during boot.
 +
 - If **rd.live.ram=1** is used in this situation, the full, uncompressed
 root filesystem is copied during boot to `/run/initramfs/rootfs.img` in the
@@ -1283,8 +1323,7 @@ rootfs.tgz            |  Compressed tarball containing filesystem image
 +
 To use this boot option, ensure that **rd.writable.fsimg=1** is in your kernel
 command line and add the **root=live:<URL>** to specify the location
-of your compressed filesystem image tarball or SquashFS image.
-=====================
+of your compressed filesystem image tarball, SquashFS, or EROFS image.
 
 **rd.writable.fsimg=**1::
 Enables writable filesystem support.  The system will boot with a fully
@@ -1306,8 +1345,8 @@ This parameter only applies together with the parameters rd.writable.fsimg
 or rd.live.ram.
 
 **root=**live:__<url>__::
-Boots a live image retrieved from __<url>__.  Requires the dracut 'livenet'
-module.  Valid handlers: __http, https, ftp, torrent, tftp__.
+    Boots a live image retrieved from __<url>__.  Requires the dracut 'livenet'
+    module.  Valid handlers: __http, https, ftp, torrent, tftp__.
 +
 [listing]
 .Examples
@@ -1332,16 +1371,19 @@ root=https://example.com/live.sqfs
 
 **rd.live.debug=**1::
 Enables debug output from the live boot process.
-=======
+
 **rd.live.check**::
 Requests a CD/DVD/USB media check with checkisomd5.
 
-**rd.live.dir=**__<path>__::
+**rd.live.dir=**__<dirname>__::
 Specifies the directory within the boot device where the squashfs.img or
-rootfs.img can be found.  By default, this is `/LiveOS`.
+rootfs.img can be found.  By default, this is `LiveOS`.
++
+The creation of a new OverlayFS overlay can be specified by including a new
+**rd.live.dir=**__<dirname>__ on the kernel commandline.
 
-**rd.live.squashimg=**__<filename of SquashFS image>__::
-Specifies the filename for a SquashFS image of the root filesystem.
+**rd.live.squashimg=**__<filename of SquashFS or EROFS image>__::
+Specifies the filename for a SquashFS or EROFS image of the root filesystem.
 By default, this is __squashfs.img__.
 
 **rd.live.ram=**1::
@@ -1353,7 +1395,7 @@ Manage the usage of a persistent overlay.
 +
 The parameter with no or just the *_<fstype>_* argument specifies the
 creation of a persistence partition for the overlay in adequate free space at
-the end of the *root=*live:_<path to blockdevice>_ disk on its first boot.
+the end of the *root=*live:_<device specification>_ disk on its first boot.
 Subsequent boots will ignore the fstype argument.
 * *_<fstype>_* is the filesystem type to use for the overlay bearing partition.
 *_<fstype>_* for a new partition may be [*btrfs*|*ext*[*432*]|*f2fs*|*xfs*];
@@ -1380,12 +1422,14 @@ when an uncompressed, writable live root filesystem is available.
 
 The above method shall be used to persist the changes made to the root
 filesystem specified within the +
-**root=**live:__<path to blockdevice>__ or **root=**live:__<url>__ device.
+**root=**live:__<device specification>__ or **root=**live:__<url>__ device.
 
 The default _pathspec_, when *:auto* or
 no **:**__<pathspec>__ is given, is `/<rd.live.dir>/overlay-<label>-<uuid>`,
 where _<label>_ and _<uuid>_ are the LABEL and UUID of the filesystem specified
-by the **root=**live:__<path|url>__ device.
+by the **root=**live:__<path|url>__ device.  A new OverlayFS overlay for the
+base root filesystem will be generated by specifying a new
+**rd.live.dir=**__<dirname>__.
 
 If a persistent overlay __is detected__ at the standard LiveOS path,
 and _rd.overlay_ is not set to 1, the overlay type (either
@@ -1401,29 +1445,48 @@ rd.overlay
 rd.overlay=f2fs
 --
 
-**rd.live.overlay.size=**__<size_MiB>__::
-Specifies a non-persistent Device-mapper overlay size in MiB.  The default is
-_32768_.
+**rd.overlay=**{[1|__<source_name>__]|0|no|off}::
+Requires the dracut _overlayfs_ module. (*rd.live.overlay.overlayfs* is the
+legacy symbol for this option.)
++
+Enables the use of the *OverlayFS* kernel module (overlay), if available, to
+provide a copy-on-write union directory for the root filesystem.   Optionally,
+sets the OverlayFS mount source name to _<source_name>_ instead of the default
+_LiveOS_rootfs_.  On non-live systems _os_rootfs_ is the default
+_<source_name>_.  On LiveOS systems that require an OverlayFS overlay, if
+*rd.overlay* is missing from the command line, it will be
+added to `/etc/kernel/cmdline` as _LiveOS_rootfs_, but having this option on
+the command line avoids a daemon-reload on DRACUT_SYSTEMD based boots.  If
+*rd.overlay=_[1|<source_name>]_* is present when either the
+OverlayFS module is unavailable or the persistent overlay is a Device-mapper
+snapshot type, then the parameter will be set automatically to `0` to inhibit
+OverlayFS configuration. The _<source_name>_ is written to the *rd.overlay=*
+parameter in `/etc/kernel/cmdline` for consumption by the _overlayfs_ module
+code.
++
+See the *OverlayFS* section introduction above.
 
-**rd.overlayfs.readonly=**1::
+**rd.overlay.readonly=**1::
 This is used to boot in a read-only mode with a normally read-write persistent
 overlay.  With this option,
 * Device-mapper overlays will have an additional, non-persistent, writable
 snapshot overlay stacked over a read-only snapshot (`/dev/mapper/live‑ro`)
-of the base root filesystem and the persistent overlay, or
-* for writable `rootfs.img` images, the above over a read-only loop device, or
-* an OverlayFS mount will link the persistent overlay directory at
+of the base root filesystem and the persistent overlay,
+* writable `rootfs.img` images will use the above over a read-only loop device,
+* OverlayFS mounts will link the persistent overlay directory at
 `/run/overlayfs‑r` as an additional read-only lower layer stacked over the base
 root filesystem, and `/run/overlayfs` becomes the temporary, writable, upper
-directory overlay, to complete the bootable root filesystem. Requires the
-dracut 'overlayfs' module.
- 
-
+directory overlay, to complete the bootable root filesystem. In this case, the
+dracut 'overlayfs' module is required.
 
 **rd.overlay.reset=**1::
 
 Specifies that a persistent overlay should be reset on boot.  All previous root
 filesystem changes are vacated by this action.
+
+**rd.live.overlay.size=**__<size_MiB>__::
+Specifies a non-persistent Device-mapper overlay size in MiB.  The default is
+_32768_.
 
 **rd.live.overlay.thin=**1::
 Enables the usage of thin snapshots instead of classic dm snapshots.
@@ -1436,7 +1499,7 @@ ZIPL
 ~~~~
 Requires the dracut 'zipl' module.
 
-**rd.zipl=**__<path to blockdevice>__::
+**rd.zipl=**__<device specification>__::
     Update the dracut commandline with the values found in the
     _dracut-cmdline.conf_ file on the given device.
     The values are merged into the existing commandline values
@@ -1600,14 +1663,18 @@ _/etc/cmdline_::
 _/etc/cmdline.d/*.conf_::
     Can contain additional command line options.
 
+_/run/initramfs/cmdline.d/*.conf_::
+    Read by getcmdline().  Not used in dracut, but potentially by 3rd parties.
+
 _/etc/kernel/cmdline_::
     Used for boot-time changes to dracut-processed command line options
     overriding others—including those on the kernel command line.
+    Advantage: its read by systemd.
 +
 [listing]
 .Example of changing an option at boot time:
 --
-printf '%s' " rd.overlayfs=0" >> /etc/kernel/cmdline
+printf '%s' " rd.overlay=0" >> /etc/kernel/cmdline
 --
 
 AUTHOR
