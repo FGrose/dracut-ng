@@ -488,6 +488,15 @@ die() {
     exit 1
 }
 
+# die quickly.
+Die() {
+    rm -- "$hookdir"/initqueue/finished/*.sh
+    {
+        flock -s 9
+        emergency_shell "$1"
+    } 9> /.console_lock
+}
+
 # Set INFO_SHOW(_while_quiet) based on kernel command line parameters.
 # Also export flags for output, verbosity, & quietude.
 cfg_output() {

@@ -12,11 +12,14 @@ command -v do_overlayfs > /dev/null || . /lib/overlayfs-lib.sh
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
 [ "$1" ] || exit 1
-
-get_rd_overlay os_rootfs
-[ -h /run/initramfs/p_pt ] || exit 0
+ovl_pt=$(getarg rd.overlay) || exit 0
+load_fstype overlay || die 'OverlayFS is required but unavailable.'
 
 root_pt="$1"
+get_ovl_pt os_rootfs ovl_pt
+[ "$ovl_pt" = off ] && exit 0
+
+strstr "$ovl_pt" ":" && ovlpath=${ovl_pt##*:}
 
 devInfo=" $(get_devInfo "$root_pt")"
 # Works for block devices or image files.
