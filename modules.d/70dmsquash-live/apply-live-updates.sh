@@ -15,12 +15,6 @@ if [ -h /dev/root ] && [ -d /run/initramfs/live/updates ] || [ -d /updates ]; th
     umount "$NEWROOT"/run
 fi
 
-# Change SELinux context type for OverlayFS directories on non-virtual filesystems.
-getargbool 0 rd.live.overlay.overlayfs && {
-    PATH=/run/rootfsbase/usr/bin:/run/rootfsbase/usr/sbin:/run/rootfsbase/bin:/run/rootfsbase/sbin:$PATH
-    chcon -t root_t /run/overlayfs /run/ovlwork
-}
-
 # release resources on iso-scan boots with rd.live.ram
 if [ -d /run/initramfs/isoscan ] && {
     [ -f /run/initramfs/squashed.img ] || [ -f /run/initramfs/rootfs.img ]
