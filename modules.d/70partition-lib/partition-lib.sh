@@ -65,21 +65,56 @@ parse_cfgArgs() {
     set -- $@ # rd_live_overlay
     IFS=' 	
 '
+    # Parse key=value pairs from rd.overlay=tmpfs:key=val,
+    parse_tmpfs_opts() {
+        local - _param _key _val
+        set -f
+        _param=${1#tmpfs:}
+        _key="${_param%%=*}"
+        _val="${_param#*=}"
+        case "$_key" in
+            size | nr_blocks | nr_inodes)
+                ovltmpfsopts="${ovltmpfsopts:+${ovltmpfsopts},}${_key}=${_val}"
+                ;;
+            *)
+                warn "Unknown tmpfs option '${_key}', ignoring."
+                ;;
+        esac
+        [ "$ovltmpfsopts" ] && echo "$ovltmpfsopts" > /run/initramfs/ovltmpfsopts
+    }
+
     for _; do
         case "$1" in
             '' | btrfs | ext[432] | f2fs | xfs)
                 p_ptfsType=${1:-${p_ptfsType:-ext4}}
                 ;;
+            subvol=?*) subvol=${1#subvol=} ;;
+            subvolid=?*) subvolid=${1#subvolid=} ;;
             ea=?*)
                 extra_attrs="${*}"
                 extra_attrs=${extra_attrs#ea=}
                 break
                 # ea,extra attribute,s must be the final arguments.
                 ;;
+            tmpfs:*)
+                parse_tmpfs_opts "$1"
+                ;;
+            size=* | nr_blocks=* | nr_inodes=*)
+                parse_tmpfs_opts "$1"
+                ;;
             [!0-9]* | 0*)
                 # Anything but a positive integer:
-                [ "$1" = auto ] || p_Partition=$(label_uuid_to_dev "${1%%:*}")
-                strstr "$1" ":" && ovlpath=${1##*:}
+                case "$1" in
+                    *=?*)
+                        ovl_pt="$(label_uuid_to_dev "${1%%:*}")"
+                        strstr "$1" ":" && ovlpath=${1##*:}
+                        ;;
+                    *) OverlayFS="$1" ;;
+                esac
+                ;;
+            *)
+                # any positive integer:
+                sizeGiB=$1
                 ;;
         esac
         shift
@@ -87,9 +122,20 @@ parse_cfgArgs() {
 }
 
 prep_Partition() {
-    [ "$p_Partition" ] && [ ! -b "$p_Partition" ] \
-        && die "The specified persistence partition, $p_Partition, is not recognized."
-
+    if [ "$p_Partition" ]; then
+        if ! [ -b "$p_Partition" ]; then
+            die "The specified persistence partition, $p_Partition, is not recognized."
+        else
+            info "Skipping overlay creation: a persistence partition already exists."
+            rd_live_overlay="$p_Partition"
+            ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.live.overlay=$p_Partition rd.live.overlay.overlayfs"
+            unset -v 'cfg'
+            return 0
+        fi
+    elif [ ! "$rd_live_overlay" ]; then
+        info "Skipping overlay creation: kernel command line parameter 'rd.live.overlay' is not set."
+        return 1
+    fi
     OLDIFS="$IFS"
     IFS='
 '
@@ -143,9 +189,52 @@ prep_Partition() {
         type "$newPtNbr" ccea7cb3-70ba-4c31-8455-b906e46a00e2 \
         set "$newPtNbr" no_automount on
     udevadm trigger --name-match "$p_Partition" --action add --settle > /dev/null 2>&1
+    ln -sf "$p_Partition" /run/initramfs/p_pt
 
     [ "${p_ptFlags+set}" ] || set_FS_options "${p_ptfsType:-ext4}" p_ptFlags
     mkfs_config "${p_ptfsType:=ext4}" LiveOS_persist $((partitionEnd - partitionStart + 1)) "${extra_attrs}"
     wipefs --lock -af${QUIET:+q} "$p_Partition"
     create_Filesystem "$p_ptfsType" "$p_Partition"
+}
+
+mount_partition() {
+    mkdir -p "$mntDir"
+    if [ "${DRACUT_SYSTEMD-}" ]; then
+        systemctl start run-os_persist.mount || die "Unable to mount $mntDir."
+    else
+        # Repurpose 99-mount-root.sh for mounting the persistence partition.
+        fstype="${p_ptfsType:-auto}" srcPartition="$overlay_pt" \
+            mountPoint="$mntDir" srcflags="$p_ptFlags" fsckoptions="$fsckoptions" \
+            override=override . "$hookdir"/mount/99-mount-root.sh
+    fi
+    if ismounted "$mntDir"; then
+        mkdir -p "$mntDir${ovl_dir:+/"$ovl_dir"}/ovlwork" "$mntDir$ovlpath"
+    else
+        prompt_message \
+            '   Failed to mount the persistent overlay; using a temporary one.' \
+            '  All new root filesystem changes will be lost on shutdown.' \
+            '  Press [Enter] to continue.'
+    fi
+}
+
+# Find the first ($1=break) or the last ($1=:) mountpoint ($2=mp) for the partition, $3.
+# or find the partition ($2=pt) for the mountpoint, $3 ($1=<any placeholder>).
+# $1 {{break|{:|continue}}|<any placeholder>for $2=pt}
+# $2 {mp|pt}
+# $3 {<partition>|<mountpoint>}
+get_MP_PT() {
+    local -
+    set +x
+    local p m
+    MP='' PT=''
+    while read -r p m _; do
+        case $2 in
+            pt)
+                [ "$m" = "$3" ] && PT="$p" MP="$m" && break
+                ;;
+            mp)
+                [ "$p" = "$3" ] && PT="$p" MP="$m" && "$1"
+                ;;
+        esac
+    done < /proc/mounts
 }

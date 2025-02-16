@@ -1,0 +1,46 @@
+#!/bin/sh
+
+[ "$RD_DEBUG" = yes ] && set -x
+PS4='+ $(read -r u _ </proc/uptime; echo "$u") ${BASH_SOURCE-$0}@$LINENO${FUNCNAME:+ $FUNCNAME()}: '
+command -v getarg > /dev/null || . /lib/dracut-lib.sh
+command -v do_overlayfs > /dev/null || . /lib/overlayfs-lib.sh
+
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+
+[ "$1" ] || exit 1
+
+get_rd_overlay os_rootfs
+[ -h /run/initramfs/p_pt ] || exit 0
+
+root_pt="$1"
+
+devInfo=$(blkid "$root_pt")
+# Works for block devices or image files.
+# missing tags will be skipped making order inconsistent between partitions.
+root_ptfsType="${devInfo#* TYPE=\"}"
+root_ptfsType="${root_ptfsType%%\"*}"
+# Retrieve UUID, or if not present, PARTUUID.
+uuid="${devInfo#*[ T]UUID=\"}"
+uuid="${uuid%%\"*}"
+label="${devInfo#* LABEL=\"}"
+label="${label%%\"*}"
+
+[ "$volatile" ] || {
+    [ -b "$p_pt" ] || die "$p_pt is not available."
+
+    # Place overlays in a standard directory.
+    ovl_dir=RootOverlays/"$ovl_dir"
+    do_overlayfs
+}
+
+ln -sf "$root_pt" /run/initramfs/rorootfs
+fstype="${root_ptfsType:-auto}" srcPartition="$root_pt" \
+    mountPoint=/run/rootfsbase srcflags="$rflags",ro \
+    fsckoptions="$fsckoptions" override=override mount_partition
+get_MP_PT : pt /run/rootfsbase
+# Save canonical partition path
+ln -sf "$PT" /run/initramfs/rorootfs
+
+ln -s null /dev/root
+
+exit 0
