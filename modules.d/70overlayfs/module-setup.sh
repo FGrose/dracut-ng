@@ -6,7 +6,7 @@ check() {
 }
 
 depends() {
-    echo base
+    echo base initqueue
 }
 
 installkernel() {
@@ -14,13 +14,18 @@ installkernel() {
 }
 
 install() {
-    inst_simple "$moddir/overlayfs-lib.sh" "/lib/overlayfs-lib.sh"
-    inst_hook pre-mount 01 "$moddir/prepare-overlayfs.sh"
-    dracut_module_included systemd || {
-        inst_hook mount 01 "$moddir/mount-overlayfs.sh"     # overlay on top of block device
+    dracut_module_included "systemd" || inst_hook mount 01 "$moddir"/mount-overlayfs.sh # overlay on top of block device
+    dracut_module_included dmsquash-live || {
+        dracut_module_included "systemd" && inst_script "$moddir"/overlayfs-generator.sh "$systemdutildir"/system-generators/dracut-overlayfs-generator
+        inst_hook cmdline 30 "$moddir/parse-overlayfs.sh"
+        inst_script "$moddir/root-overlayfs.sh" "/sbin/root-overlayfs"
     }
-    dracut_module_included net-lib && inst_hook pre-pivot 10 "$moddir/mount-overlayfs.sh" # overlay on top of network device (e.g. nfs)
-    inst_hook pre-pivot 51 "$moddir/overlayfs-pre-pivot-actions.sh"
+    inst_simple "$moddir"/overlayfs-lib.sh /lib/overlayfs-lib.sh
+    inst_hook pre-udev 30 "$moddir"/overlayfs-genrules.sh
+    inst_hook pre-mount 01 "$moddir"/prepare-overlayfs.sh
+    dracut_module_included net-lib && inst_hook pre-pivot 10 "$moddir"/mount-overlayfs.sh # overlay on top of network device (e.g. nfs)
+    inst_hook pre-pivot 51 "$moddir"/overlayfs-pre-pivot-actions.sh
     inst_script "$moddir"/overlayfs-root_t.sh /sbin/overlayfs-root_t.sh
     inst_simple "$moddir"/overlayfs-root_t.service "$systemdsystemunitdir"/overlayfs-root_t.service
+    inst_hook pre-pivot 51 "$moddir"/overlayfs-pre-pivot-actions.sh
 }
