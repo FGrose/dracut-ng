@@ -2,12 +2,25 @@
 
 command -v getarg > /dev/null || . /lib/dracut-lib.sh
 
-getargbool 0 rd.overlayfs -d rd.live.overlay.overlayfs || return 0
+OverlayFS=$(getarg rd.overlayfs) || exit 0
+case "${OverlayFS%%[=/,]*}" in
+    0 | no | off) exit 0 ;;
+    '' | 1) ovlfs_name=os_rootfs ;;
+    "${OverlayFS%%,*}") ovlfs_name=${OverlayFS%%,*} ;;
+    *) # devspec present
+        # with source name prefix
+        [ "${OverlayFS%%,*}" != "$OverlayFS" ] && ovlfs_name=${OverlayFS%%,*}
+        ;;
+esac
 
-ismounted LiveOS_rootfs || {
-    getargbool 0 rd.overlayfs.readonly -d rd.live.overlayfs.readonly && readonly_overlay="--readonly"
+findmnt "${ovlfs_name:=os_rootfs}" > /dev/null 2>&1 || {
+    [ -h /run/overlayfs ] && getargbool 0 rd.overlayfs.readonly && {
+        readonly_overlay=--readonly
+        volatile=volatile
+    }
 
     basedirs=lowerdir=${readonly_overlay:+/run/overlayfs-r:}/run/rootfsbase
 
-    mount -t overlay LiveOS_rootfs -o "$basdirs",upperdir=/run/overlayfs,workdir=/run/ovlwork "$NEWROOT"
+    mount -t overlay "$ovlfs_name" \
+    -o "$basedirs",upperdir=/run/overlayfs,workdir=/run/ovlwork "$NEWROOT"
 }
