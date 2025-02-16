@@ -10,6 +10,11 @@ command -v do_overlayfs > /dev/null || . /lib/overlayfs-lib.sh
 
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
+# Avoid re-triggering these rules.
+rm -- /etc/udev/rules.d/99-live-squash.rules \
+    /etc/udev/rules.d/99-liveiso-mount.rules > /dev/null 2>&1
+udevadm control --reload
+
 [ "$1" ] || exit 1
 livedev="$1"
 ln -s "$livedev" /run/initramfs/livedev
@@ -89,7 +94,7 @@ rd_live_check() {
         if [ $? -eq 1 ]; then
             warn "Media check failed! We do not recommend using this medium. System will halt in 12 hours."
             sleep 43200
-            die "Media check failed!"
+            Die "Media check failed!"
             exit 1
         fi
         type plymouth > /dev/null 2>&1 && plymouth --show-splash
@@ -117,7 +122,7 @@ esac
 mkdir -m 0755 -p /run/initramfs/live
 case "$livedev_fstype" in
     auto)
-        die "cannot mount live image (unknown filesystem type $livedev_fstype)"
+        Die "cannot mount live image (unknown filesystem type $livedev_fstype)"
         ;;
     iso9660)
         [ -f "$livedev" ] && {
@@ -147,7 +152,7 @@ esac
     # workaround some timing problem
     sleep 0.1
     $mntcmd -o ${liverw:-ro} "$livedev" /run/initramfs/live > /dev/kmsg 2>&1 \
-        || die "Failed to mount block device of live image."
+        || Die "Failed to mount block device of live image."
 }
 
 # overlay setup helper function
@@ -338,7 +343,7 @@ if [ "$FSIMG" ]; then
     fi
     # For writable DM images...
     readonly_base=1
-    if [ ! "$SQUASHED" ] && [ "$live_ram" ] && [ ! "$OverlayFS" ] \
+    if [ "$live_ram" ] && [ ! "$OverlayFS" ] \
         || [ "$writable_fsimg" ] \
         || [ "$rd_overlay" = none ] || [ "$rd_overlay" = None ] || [ "$rd_overlay" = NONE ]; then
         if [ ! "$readonly_overlay" ]; then
@@ -378,7 +383,7 @@ if [ "$OverlayFS" ]; then
         # Reuse variable to hold OverlayFS mount source name.
         rd_overlay=LiveOS_rootfs
     else
-        [ -d /sys/module/overlay ] || die 'OverlayFS is required but unavailable.'
+        [ -d /sys/module/overlay ] || Die 'OverlayFS is required but unavailable.'
         # Support legacy case of OverlayFS over traditional root block device.
         ln -sf /run/initramfs/live /run/rootfsbase
         rd_overlay=os_rootfs
