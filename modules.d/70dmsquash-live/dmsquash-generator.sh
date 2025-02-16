@@ -4,7 +4,7 @@
 command -v getarg > /dev/null || . /lib/dracut-lib.sh
 
 if OverlayFS="$(getarg rd.overlayfs -d rd.live.overlay.overlayfs)"; then
-    load_fstype overlay || die 'OverlayFS is required but unavailable.'
+    load_fstype overlay || Die 'OverlayFS is required but unavailable.'
     getargbool 0 rd.live.overlay || {
         # For OverlayFS on a regular block root device:
         case "${OverlayFS%%[=/]*}" in

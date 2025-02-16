@@ -1,6 +1,9 @@
 #!/bin/sh
 # overlayfs-lib.sh: utilities for OverlayFS use
 
+# Avoid re-triggering these rules.
+rm -- /etc/udev/rules.d/99-overlayfs.rules 2> /dev/null && udevadm control --reload
+
 # Set default mount flags for fsType $1, if none from the command line.
 # Set default mkfs extra attributes if none from the command line.
 set_FS_options() {
