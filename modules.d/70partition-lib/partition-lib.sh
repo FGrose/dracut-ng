@@ -1,5 +1,6 @@
 #!/bin/sh
 # partition-lib.sh: utilities for partition editing
+command -v set_FS_options > /dev/null || . /lib/distribution-live-lib.sh
 
 plymouth --ping > /dev/null 2>&1 && {
     export PLYMOUTH=PLYMOUTH
@@ -8,6 +9,28 @@ plymouth --ping > /dev/null 2>&1 && {
 
 run_parted() {
     LC_ALL=C flock "$1" parted --script "$@"
+}
+
+# call in this fashion:
+#   src=<source image file or block device>
+#   dst=<destination path>
+#     [var=<name of variable holding the destination path>]
+#     [sz=<image size in bytes>]
+#     [msg=<message text for copy to persistent media>] dd_copy
+dd_copy() {
+    local src dst var sz msg ddir
+    ddir=${dst%/*}
+    [ "$(findmnt -nro FSTYPE -T "$ddir")" = tmpfs ] && {
+        src=$(readlink -f "$src")
+        [ "$sz" ] || sz=$(blkid --probe --match-tag FSSIZE --output value --usages filesystem "$src")
+        check_live_ram "$((sz >> 20))"
+    }
+
+    echo "Copying $src ${msg:=to RAM...}" > /dev/kmsg
+    echo ' (this may take a minute or so)' > /dev/kmsg
+    LC_ALL=C flock "$ddir" dd if="$src" of="$dst" ${sz:+count="${sz}"B} bs=8M iflag=nocache oflag=direct status=progress 2> /dev/kmsg
+    eval "${var:=_}=$dst"
+    echo "Done copying $src $msg" > /dev/kmsg
 }
 
 # Determine some attributes for the device - $1
@@ -120,6 +143,19 @@ get_LiveOS_persist() {
         ln -sf "$p_Partition" /run/initramfs/p_pt
         p_ptfsType="$ptFStype"
     }
+}
+
+# from diskDevice $1
+get_ESP() {
+    local -
+    set +x
+    [ "$partitionTable" ] || get_partitionTable "$1"
+    espNbr=${partitionTable%"${partitionTable#* esp;}"}
+    espRow="${espNbr##*;
+}"
+    espNbr=${espRow%%:*}
+    ESP=$(aptPartitionName "$1" "$espNbr")
+    ln -sf "$ESP" /run/initramfs/espdev
 }
 
 # Prompt for $1 - DK | PT
@@ -314,6 +350,18 @@ Press <Escape> to toggle to/from your path selection menu."
     return 0
 }
 
+# Recommended ESP size in MiB
+get_sz_forESP() {
+    if [ "$szDisk" -lt 34359738368 ]; then
+        # Minimum ESP size of 512 MiB for disks smaller than 32 GiB.
+        echo 512
+    else
+        # Provide ESP with 128 MiB of additional space per 16 GiB of free disk
+        #  space for multi image boots.
+        echo "$(((((szDisk - freeSpaceStart) / 17179869184) << 7) + 512))"
+    fi
+}
+
 # Prompt for new partition size.
 prompt_for_size() {
     local - OLDIFS space warn sz sz_max
@@ -384,12 +432,12 @@ Press <Escape> to toggle to/from the partition display."
 
 parse_cfgArgs() {
     local - ISS ptSpec
-    if strstr "$@" serial= ; then
+    if strstr "$@" serial=; then
         # shellcheck disable=SC2046
         set -- $(maskComma_inSerial "$@")
     else
         # shellcheck disable=SC2068
-        set -- $@ # rd_live_overlay
+        set -- $@ # rd_live_overlay or rd_live_image
     fi
     IFS=' 	
 '
@@ -421,6 +469,10 @@ parse_cfgArgs() {
                     esac
                 }
                 ;;
+            auto)
+                espStart=1
+                cfg=ovl
+                ;;
             ea=?*)
                 extra_attrs="${*}"
                 extra_attrs=${extra_attrs#ea=}
@@ -433,7 +485,8 @@ parse_cfgArgs() {
                 ;;
             *[!0-9]* | 0*)
                 # Anything but a positive integer:
-                [ "$1" = auto ] || p_Partition=$(label_uuid_to_dev "${1%%:*}")
+                p_Partition="$(readlink -f "$(label_uuid_to_dev "${1%%:*}")" 2> /dev/kmsg)"
+                get_diskDevice "$p_Partition"
                 strstr "$1" ":" && ovlpath=${1##*:}
                 ;;
             *)
@@ -446,18 +499,15 @@ parse_cfgArgs() {
 }
 
 prep_Partition() {
-    local n removePtNbr freeSpaceStart freeSpaceEnd byteMax
+    local removePtNbr freeSpaceStart freeSpaceEnd byteMax
     [ "$p_Partition" ] && ! [ -b "$p_Partition" ] \
         && Die "The specified persistence partition, $p_Partition, is not recognized."
-    if [ "$p_Partition" ] && ! [ "$removePt" ]; then
+    [ "$p_Partition" ] && ! [ "$removePt" ] && {
         info "Skipping overlay creation: a persistence partition already exists."
         rd_live_overlay="$p_Partition"
         ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.live.overlay=$p_Partition rd.live.overlay.overlayfs"
         return 0
-    elif [ ! "$rd_live_overlay" ]; then
-        info "Skipping overlay creation: kernel command line parameter 'rd.live.overlay' is not set."
-        return 1
-    fi
+    }
     freeSpaceEnd=$((szDisk - 1048576))
     [ "$removePt" ] && {
         [ "${removePt#"$diskDevice"}" = "$removePt" ] && {
@@ -484,6 +534,16 @@ prep_Partition() {
         }
         byteMax=$freeSpaceEnd
     }
+    # Make optimalIO alignment at least 4 MiB.
+    #   See https://www.gnu.org/software/parted/manual/parted.html#FOOT2 .
+    [ "${optimalIO:-0}" -lt 4194304 ] && optimalIO=4194304
+
+    # Set optimalIO address for partition start - $1, variable - $2
+    optimize() {
+        [ $(($1 % optimalIO)) -gt 0 ] \
+            && eval "$2"=$((($1 / optimalIO + 1) * optimalIO))
+    }
+
     OLDIFS="$IFS"
     IFS='
 '
@@ -499,26 +559,44 @@ prep_Partition() {
         Gap1)
             # Remove artifactual partition in Fedora 37-41 distribution .iso
             removePtNbr=$1
+            removePt=$(aptPartitionName "$diskDevice" "$removePtNbr")
             freeSpaceStart=${2%B}
+            espStart=1
+            ;;
+        Appended2)
+            espStart=1
             ;;
     esac
-    [ "$removePt" ] || {
-        freeSpaceStart=$((${3%B} + 1))
-        byteMax=$((szDisk - 268435456))
-    }
+    [ "$removePt" ] || freeSpaceStart=$((${3%B} + 1))
+    byteMax=$((szDisk - 268435456))
 
-    # Make optimalIO alignment at least 4 MiB.
-    #   See https://www.gnu.org/software/parted/manual/parted.html#FOOT2 .
-    [ "${optimalIO:-0}" -lt 4194304 ] && optimalIO=4194304
+    [ "$ESP" ] || get_ESP "$diskDevice"
+    IFS=:
+    # shellcheck disable=SC2086
+    set -- ${espRow:=1:${optimalIO}B:3:4:5:6}
+    IFS="$OLDIFS"
 
-    # Set optimalIO address for partition start - $1, variable - $2
-    optimize() {
-        [ $(($1 % optimalIO)) -gt 0 ] \
-            && eval "$2"=$((($1 / optimalIO + 1) * optimalIO))
+    [ "$espStart" ] && {
+        # Format ESP.
+        espStart=${2%B}
+        freeSpaceStart=$((espStart + (${szESP:=$(get_sz_forESP)} << 20) + 1))
+
+        optimize "$espStart" espStart
+
+        if [ -d /run/initramfs/isoscan ]; then
+            isoscandev="$(readlink -f /run/initramfs/isoscandev)"
+            isofile="$(readlink -f /run/initramfs/isofile)"
+        fi
     }
 
     partitionStart=$freeSpaceStart
     optimize "$partitionStart" partitionStart
+
+    [ "$espStart" ] && {
+        espCmd="rm ${espNbr:=1}"
+        espCmd="${espCmd:+rm "$espNbr"} --align optimal mkpart ESP fat32 ${espStart}B $((partitionStart - 1))B \
+            type $espNbr c12a7328-f81f-11d2-ba4b-00a0c93ec93b"
+    }
 
     if [ "$partitionStart" -gt "$byteMax" ]; then
         # Allow at least 256 MiB for persistence partition.
@@ -527,10 +605,23 @@ prep_Partition() {
     fi
     sizeGiB=${sizeGiB:+$((sizeGiB << 30))}
     partitionEnd="$((partitionStart + ${sizeGiB:-$szDisk} - 512))"
-    [ "$partitionEnd" -gt "$freeSpaceEnd" ] && partitionEnd=$freeSpaceEnd
+    [ "$partitionEnd" -gt "$freeSpaceEnd" ] && partitionEnd="$freeSpaceEnd"
 
-    run_parted "$diskDevice" --fix ${removePtNbr:+rm $removePtNbr} \
-        ${newptCmd:=--align optimal mkpart LiveOS_persist "${partitionStart}B" "${partitionEnd}B"}
+    [ "$removePtNbr" ] && wipefs --lock -af${QUIET:+q} "$removePt"
+    [ "$espCmd" ] && wipefs --lock -af${QUIET:+q} "$ESP"
+
+    # shellcheck disable=SC2086
+    run_parted "${diskDevice}" --fix \
+        ${removePtNbr:+rm "$removePtNbr"} \
+        ${espCmd:+$espCmd} \
+        ${newptCmd:=--align optimal mkpart "$live_dir".. "${partitionStart}"B "${partitionEnd}"B}
+    : "${cfg:=ovl}"
+
+    [ "$espCmd" ] && {
+        udevadm trigger --name-match "$ESP" --action add --settle > /dev/kmsg 2>&1
+        mkfs_config fat ESP $((partitionStart - espStart))
+        create_Filesystem fat "$ESP"
+    }
 
     # LiveOS persistence partition type
     newptType=ccea7cb3-70ba-4c31-8455-b906e46a00e2
@@ -546,10 +637,10 @@ prep_Partition() {
     set_pt_type $newptCmd
 
     p_Partition=$(aptPartitionName "$diskDevice" "$newPtNbr")
-    udevadm trigger --name-match "$p_Partition" --action add --settle > /dev/null 2>&1
+    udevadm trigger --name-match "$p_Partition" --action add --settle > /dev/kmsg 2>&1
     ln -sf "$p_Partition" /run/initramfs/p_pt
 
-    set_FS_options "${fsType:-ext4}"
+    [ "$p_ptFlags" ] || set_FS_options "${fsType:-ext4}"
     mkfs_config "${p_ptfsType:=ext4}" LiveOS_persist $((partitionEnd - partitionStart + 1)) "${extra_attrs}"
     wipefs --lock -af${QUIET:+q} "$p_Partition"
     create_Filesystem "$p_ptfsType" "$p_Partition"
