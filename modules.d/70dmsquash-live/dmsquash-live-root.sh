@@ -284,26 +284,19 @@ if [ -e /run/initramfs/live/"$srcdir/$squash_image" ]; then
     SQUASHED=/run/initramfs/live/"$srcdir/$squash_image"
 fi
 if [ -e "$SQUASHED" ]; then
-    if [ "$live_ram" ]; then
-        imgsize=$(($(blkid --probe --match-tag FSSIZE --output value --usages filesystem "$SQUASHED") / (1024 * 1024)))
-        check_live_ram $imgsize
-        echo 'Copying live image to RAM...' > /dev/kmsg
-        echo ' (this may take a minute)' > /dev/kmsg
-        dd if="$SQUASHED" of=/run/initramfs/squashed.img bs=512 2> /dev/null
-        echo 'Done copying live image to RAM.' > /dev/kmsg
-        SQUASHED=/run/initramfs/squashed.img
-    fi
+    [ "$live_ram" ] && src="$SQUASHED" dst=/run/initramfs/squashfs.img var=SQUASHED dd_copy
 
-    SQUASHED_LOOPDEV=$(losetup -f)
-    losetup -r "$SQUASHED_LOOPDEV" "$SQUASHED"
-    mkdir -m 0755 -p /run/initramfs/squashfs
-    mount -n -o ro "$SQUASHED_LOOPDEV" /run/initramfs/squashfs
+    SQUASHED_LOOPDEV=$(losetup -r -f --show "$SQUASHED")
+    mount --mkdir=0755 -n -o ro "$SQUASHED_LOOPDEV" /run/initramfs/squashfs
 
     if [ -d /run/initramfs/squashfs/LiveOS ]; then
         if [ -f /run/initramfs/squashfs/LiveOS/rootfs.img ]; then
             FSIMG=/run/initramfs/squashfs/LiveOS/rootfs.img
         elif [ -f /run/initramfs/squashfs/LiveOS/ext3fs.img ]; then
             FSIMG=/run/initramfs/squashfs/LiveOS/ext3fs.img
+        else
+            Die "Failed to find an enbedded root filesystem image in /run/initramfs/squashfs/LiveOS/."
+            exit 1
         fi
     elif [ -d /run/initramfs/squashfs/usr ] || [ -d /run/initramfs/squashfs/ostree ]; then
         FSIMG=$SQUASHED
@@ -318,9 +311,6 @@ if [ -e "$SQUASHED" ]; then
             Die 'OverlayFS is required but unavailable.'
             exit 1
         fi
-    else
-        Die "Failed to find a root filesystem in $SQUASHED."
-        exit 1
     fi
 else
     # we might have an embedded fs image to use as rootfs (uncompressed live)
@@ -328,14 +318,11 @@ else
         FSIMG=/run/initramfs/live/"$srcdir"/rootfs.img
     elif [ -e /run/initramfs/live/"$srcdir"/ext3fs.img ]; then
         FSIMG=/run/initramfs/live/"$srcdir"/ext3fs.img
+    else
+        Die "Failed to find a root filesystem in /run/initramfs/live/$srcdir/."
+        exit 1
     fi
-    if [ "$live_ram" ]; then
-        echo 'Copying live image to RAM...' > /dev/kmsg
-        echo ' (this may take a minute or so)' > /dev/kmsg
-        dd if="$FSIMG" of=/run/initramfs/rootfs.img bs=512 2> /dev/null
-        echo 'Done copying live image to RAM.' > /dev/kmsg
-        FSIMG=/run/initramfs/rootfs.img
-    fi
+    [ "$live_ram" ] && src="$FSIMG" dst=/run/initramfs/rootfs.img var=FSIMG dd_copy
 fi
 
 if [ "$FSIMG" ]; then
