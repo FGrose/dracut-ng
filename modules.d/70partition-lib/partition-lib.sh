@@ -10,6 +10,67 @@ run_parted() {
     LC_ALL=C flock "$1" parted --script "$@"
 }
 
+<<<<<<< HEAD
+=======
+# call in this fashion:
+#   src=<source image file or block device>
+#   dst=<destination path>
+#     [var=<name of variable holding the destination path>]
+#     [sz=<image size in bytes>]
+#     [msg=<message text for copy to persistent media>] dd_copy
+dd_copy() {
+    local src dst var sz msg ddir
+    ddir=${dst%/*}
+    [ "$(findmnt -nro FSTYPE -T "$ddir")" = tmpfs ] && {
+        src=$(readlink -f "$src")
+        [ "$sz" ] || sz=$(blkid --probe --match-tag FSSIZE --output value --usages filesystem "$src")
+        check_live_ram "$((sz >> 20))"
+    }
+
+    echo "Copying $src ${msg:=to RAM...}" > /dev/kmsg
+    echo ' (this may take a minute or so)' > /dev/kmsg
+    LC_ALL=C flock "$ddir" dd if="$src" of="$dst" ${sz:+count="${sz}"B} bs=8M iflag=nocache oflag=direct status=progress 2> /dev/kmsg
+    eval "${var:=_}=$dst"
+    echo "Done copying $src $msg" > /dev/kmsg
+}
+
+# Determine some attributes for the device - $1
+get_diskDevice() {
+    local dev n ls_dev
+    dev="$1"
+    ls_dev="lsblk -dnpro TYPE,PKNAME,OPT-IO,FSTYPE $dev"
+    # shellcheck disable=SC2046
+    set -- $($ls_dev 2>&1)
+    until [ "$1" != lsblk: ] || [ ${n:=0} -gt 9 ]; do
+        sleep 0.4
+        n=$((n + 1))
+        # shellcheck disable=SC2046
+        set -- $($ls_dev 2>&1)
+    done
+    case "$1" in
+        disk)
+            diskDevice="$dev"
+            shift
+            ;;
+        part)
+            diskDevice="$2"
+            shift 2
+            ;;
+        loop)
+            return 0
+            ;;
+        lsblk:)
+            # shellcheck disable=SC3028,SC2128
+            Die "get_diskDevice() failed near $BASH_SOURCE@LINENO:$((LINENO - 18)) ${FUNCNAME:+$FUNCNAME()} 
+    > $* <"
+            ;;
+    esac
+    optimalIO="$1"
+    fsType="$2"
+    ln -sf "$diskDevice" /run/initramfs/diskdev
+}
+
+>>>>>>> fb7e8df0b (feat(dmsquash-live): provide & employ dd copy image function)
 # Set partitionTable, szDisk variables for diskDevice=$1
 # partitionTable hold values for latest call to this function.
 get_partitionTable() {
@@ -75,6 +136,203 @@ get_newptNbr() {
 # Find the overlay's partition and assign variables & link.
 get_LiveOS_persist() {
     local -
+    set +x
+    [ "$partitionTable" ] || get_partitionTable "$1"
+    espNbr=${partitionTable%"${partitionTable#* esp;}"}
+    espRow="${espNbr##*;
+}"
+    espNbr=${espRow%%:*}
+    ESP=$(aptPartitionName "$1" "$espNbr")
+    ln -sf "$ESP" /run/initramfs/espdev
+}
+
+# Default case block for prompt_for_input().
+case_block() {
+    case "$REPLY" in
+        '' | *[!0-9]* | 0[0-9]*) obj='continue' ;;
+    esac
+}
+
+# Default end block for prompt_for_input().
+end_block() {
+    if [ "$REPLY" -lt 10 ]; then
+        REPLY=\`\`$REPLY
+    elif [ "$REPLY" -lt 100 ]; then
+        REPLY=\`$REPLY
+    fi
+    obj=${list#*"${REPLY} - "}
+    obj="${obj%%[\`|
+]*}"
+}
+
+# Core prompt function for prompt_for_* functions below.
+#  $PROMPT retrieved from /tmp/prompt
+prompt_for_input() {
+    local - obj _list
+    set +x
+    [ "$PLYMOUTH" ] || _list="
+${warn:+"$warn
+"}$list
+"
+    {
+        flock -s 9
+        while [ "${obj:-#}" = '#' ]; do
+            printf "\033c" > /dev/console
+            dmesg -D
+            read -r PROMPT < /tmp/prompt
+            if [ "$PLYMOUTH" ]; then
+                IFS='
+' plym_write "${warn:+"$warn
+"}$list
+Press <Escape> to toggle to/from your target selection menu."
+                REPLY=$(plymouth ask-question --prompt="$PROMPT")
+            elif [ "${DRACUT_SYSTEMD-}" ]; then
+                echo "${_list%
+*}" > /dev/console
+                REPLY=$(systemd-ask-password --echo=yes --timeout=0 "${PROMPT#Press <Escape> to toggle menu, then }":)
+            else
+                printf '%s' "${_list}${PROMPT#Press <Escape> to toggle menu, then }: " > /dev/console
+                read -r REPLY
+            fi
+            dmesg -E
+            case_block
+            case "$obj" in
+                continue)
+                    unset -v 'obj'
+                    continue
+                    ;;
+            esac
+            end_block
+        done
+    } 9> /.console_lock
+    echo "$obj"
+    objSelected="$obj"
+    return 0
+}
+
+# from diskDevice $1
+get_ESP() {
+    local -
+    set +x
+    [ "$partitionTable" ] || get_partitionTable "$1"
+    espNbr=${partitionTable%"${partitionTable#* esp;}"}
+    espRow="${espNbr##*;
+}"
+    espNbr=${espRow%%:*}
+    ESP=$(aptPartitionName "$1" "$espNbr")
+    ln -sf "$ESP" /run/initramfs/espdev
+}
+
+# Prompt for $1 - DK | PT
+#           [$2] - message
+#           [$3] - warnx (warning line)
+#  Sets variable diskDevice or pt_dev for partition.
+prompt_for_device() {
+    local - OLDIFS discs d i j device dev list _list sep message warnx warn warn0 warnz
+    case "${1-PT}" in
+        DK)
+            # Assign diskDevice.
+            message=${2-'
+`
+`   Select the installation target disk.
+`'}
+            device=disc
+            d=d
+            ;;
+        PT)
+            # Assign partition
+            message=${2-'
+`
+`   Select the installation target partition.
+`'}
+            device=partition
+            ;;
+    esac
+    warnx="$3"
+    set +x
+    discs=$(lsblk -"${d:+$d}"po PATH,LABEL,SIZE,MODEL,SERIAL,TYPE /dev/sd? /dev/nvme??? /dev/mmcblk? 2> /dev/kmsg)
+    OLDIFS="$IFS"
+    IFS='
+'
+    # shellcheck disable=SC2086
+    set -- $discs
+    IFS="$OLDIFS"
+    j=1
+    for d; do
+        case "${d##* }" in
+            TYPE)
+                i='`
+``#'
+                sep=' '
+                ;;
+            disk)
+                sep=-
+                [ "$device" = partition ] && {
+                    i='``.'
+                    sep='.'
+                }
+                ;;
+            *)
+                sep=-
+                ;;
+        esac
+        [ "$sep" = - ] && {
+            i=$j
+            if [ "$j" -lt 10 ]; then
+                i=\`\`$i
+            elif [ "$j" -lt 100 ]; then
+                i=\`$i
+            fi
+            j=$((j + 1))
+        }
+        list="$list$i $sep ${d% *}
+"
+    done
+    warn='`
+`                  >>> >>> >>>       WARNING       <<< <<< <<<
+`                  >>>    Choose your target carefully!    <<<'
+    warn0='`                  >>>   A wrong choice will destroy the   <<<
+`                  >>>      contents of a whole disc!      <<<'
+    warnz='`                  >>> >>> >>>                     <<< <<< <<<'
+    case "$warnx" in
+        warn0)
+            warn=''
+            warn0=''
+            ;;
+        *)
+            warnx="$warn0"
+            ;;
+    esac
+    warn="$warn
+$warn0
+$warnz$message"
+
+    echo "Enter the # for your target $device here: " > /tmp/prompt
+
+    prompt_for_input
+
+    dev="${objSelected%% *}"
+    case "$device" in
+        disc)
+            diskDevice=$dev
+            ln -sf "$diskDevice" /run/initramfs/diskdev
+            ;;
+        partition)
+            pt_dev=$dev
+            get_diskDevice "$pt_dev"
+            ;;
+    esac
+    get_partitionTable "$diskDevice"
+}
+
+# Prompt for directory contents based on input glob "$@"
+# $1=<header message>
+# $2=<mountpoint directory>[/<directory path>]
+# $3=<input glob $@
+#  sets variable objSelected
+prompt_for_path() {
+    local - o p i j warn message="$1" dir="$2"
+>>>>>>> fb7e8df0b (feat(dmsquash-live): provide & employ dd copy image function)
     set -x
     p_Partition=''
     ptNbr=''
@@ -191,6 +449,10 @@ parse_cfgArgs() {
                     esac
                 }
                 ;;
+            auto)
+                espStart=1
+                cfg=ovl
+                ;;
             ea=?*)
                 extra_attrs="${*}"
                 extra_attrs=${extra_attrs#ea=}
@@ -272,10 +534,8 @@ prep_Partition() {
             freeSpaceStart=${2%B}
             ;;
     esac
-    [ "$removePt" ] || {
-        freeSpaceStart=$((${3%B} + 1))
-        byteMax=$((szDisk - 268435456))
-    }
+    [ "$removePt" ] || freeSpaceStart=$((${3%B} + 1))
+    byteMax=$((szDisk - 268435456))
 
     # Make optimalIO alignment at least 4 MiB.
     #   See https://www.gnu.org/software/parted/manual/parted.html#FOOT2 .
@@ -286,9 +546,27 @@ prep_Partition() {
         [ $(($1 % optimalIO)) -gt 0 ] \
             && eval "$2"=$((($1 / optimalIO + 1) * optimalIO))
     }
+    [ "$espStart" ] && {
+        # Format ESP.
+        espStart=${2%B}
+        freeSpaceStart=$((espStart + (${szESP:=$(get_sz_forESP)} << 20) + 1))
+
+        optimize "$espStart" espStart
+
+        if [ -d /run/initramfs/isoscan ]; then
+            isoscandev="$(readlink -f /run/initramfs/isoscandev)"
+            isofile="$(readlink -f /run/initramfs/isofile)"
+        fi
+    }
 
     partitionStart=$freeSpaceStart
     optimize "$partitionStart" partitionStart
+
+    [ "$espStart" ] && {
+        espCmd="rm ${espNbr:=1}"
+        espCmd="${espCmd:+rm "$espNbr"} --align optimal mkpart ESP fat32 ${espStart}B $((partitionStart - 1))B \
+            type $espNbr c12a7328-f81f-11d2-ba4b-00a0c93ec93b"
+    }
 
     if [ "$partitionStart" -gt "$byteMax" ]; then
         # Allow at least 256 MiB for persistence partition.
@@ -297,13 +575,39 @@ prep_Partition() {
     fi
     sizeGiB=${sizeGiB:+$((sizeGiB << 30))}
     partitionEnd="$((partitionStart + ${sizeGiB:-$szDisk} - 512))"
-    [ "$partitionEnd" -gt "$freeSpaceEnd" ] && partitionEnd=$freeSpaceEnd
+    [ "$partitionEnd" -gt "$freeSpaceEnd" ] && partitionEnd="$freeSpaceEnd"
 
     run_parted "$diskDevice" --fix ${removePtNbr:+rm $removePtNbr} \
         "${newptCmd:=--align optimal mkpart LiveOS_persist "${partitionStart}B" "${partitionEnd}B"}"
 
-    # LiveOS persistence partition type
-    newptType=ccea7cb3-70ba-4c31-8455-b906e46a00e2
+    # shellcheck disable=SC2086
+    run_parted "${diskDevice}" --fix \
+        ${removePtNbr:+rm "$removePtNbr"} \
+        ${espCmd:+$espCmd} \
+        ${newptCmd:=--align optimal mkpart "$live_dir".. "${partitionStart}"B "${partitionEnd}"B}
+    : "${cfg:=ovl}"
+
+    [ "$espCmd" ] && {
+        udevadm trigger --name-match "$ESP" --action add --settle > /dev/kmsg 2>&1
+        mkfs_config fat ESP $((partitionStart - espStart))
+        create_Filesystem fat "$ESP"
+    }
+
+    if [ "$roptCmd" ]; then
+        newptCmd="$roptCmd"
+        # LiveOS read-only root filesystem partition type
+        newptType=ba3b9999-09c7-4e11-92c4-05736aea8b95
+    else
+        newptCmd="$p_ptCmd"
+        # LiveOS persistence partition type
+        newptType=ccea7cb3-70ba-4c31-8455-b906e46a00e2
+    fi
+    # shellcheck disable=SC2086
+    run_parted "${diskDevice}" --fix ${mklabel:+mklabel ${mklabel:=gpt}} \
+        ${removePtNbr:+rm "$removePtNbr"} \
+        ${espCmd:+$espCmd} \
+        ${newptCmd}
+    : "${cfg:=ovl}"
 
     # Set new partition type with command - $@
     set_pt_type() {
@@ -316,10 +620,10 @@ prep_Partition() {
     set_pt_type $newptCmd
 
     p_Partition=$(aptPartitionName "$diskDevice" "$newPtNbr")
-    udevadm trigger --name-match "$p_Partition" --action add --settle > /dev/null 2>&1
+    udevadm trigger --name-match "$p_Partition" --action add --settle > /dev/kmsg 2>&1
     ln -sf "$p_Partition" /run/initramfs/p_pt
 
-    set_FS_opts "${fsType:-ext4}" p_ptFlags
+    [ "$p_ptFlags" ] || set_FS_opts "${fsType:-ext4}" p_ptFlags
     mkfs_config "${p_ptfsType:=ext4}" LiveOS_persist $((partitionEnd - partitionStart + 1)) "${extra_attrs}"
     wipefs --lock -af${QUIET:+q} "$p_Partition"
     create_Filesystem "$p_ptfsType" "$p_Partition"
