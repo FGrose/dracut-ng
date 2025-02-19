@@ -86,6 +86,197 @@ get_LiveOS_persist() {
     }
 }
 
+# Core prompt function for prompt_for_* functions below.
+#  $PROMPT retrieved from /tmp/prompt
+prompt_for_input() {
+    local - obj _list
+    set +x
+    [ "$PLYMOUTH" ] || _list="
+${warn:+"$warn
+"}$list
+"
+    {
+        flock -s 9
+        while [ "${obj:-#}" = '#' ]; do
+            printf "\033c" > /dev/console
+            dmesg -D
+            read -r PROMPT < /tmp/prompt
+            : "${PROMPT:=Enter the # for your selection here: }"
+            if [ "$PLYMOUTH" ]; then
+                IFS='
+' plym_write "${warn:+"$warn
+"}$list
+Press <Escape> to toggle to/from your target selection menu."
+                REPLY=$(plymouth ask-question --prompt="$PROMPT")
+            elif [ "${DRACUT_SYSTEMD-}" ]; then
+                echo "${_list%
+*}" > /dev/console
+                REPLY=$(systemd-ask-password --echo=yes --timeout=0 "${PROMPT#Press <Escape> to toggle menu, then }")
+            else
+                printf '%s' "${_list}${PROMPT#Press <Escape> to toggle menu, then } " > /dev/console
+                read -r REPLY
+            fi
+            dmesg -E
+            case_block
+            case "$obj" in
+                continue)
+                    unset -v 'obj'
+                    continue
+                    ;;
+            esac
+            end_block
+        done
+    } 9> /.console_lock
+    echo "$obj"
+    objSelected="$obj"
+    return 0
+}
+
+# Prompt for $1 - DK | PT
+#           [$2] - message
+#           [$3] - warnx (warning line)
+#  Sets variable diskDevice or pt_dev for partition.
+prompt_for_device() {
+    local - OLDIFS discs d i j device dev list _list sep message warnx warn warn0 warnz
+    case "${1-PT}" in
+        DK)
+            # Assign diskDevice.
+            message=${2-'
+`
+`   Select the installation target disk.
+`'}
+            device=disc
+            d=d
+            ;;
+        PT)
+            # Assign partition
+            message=${2-'
+`
+`   Select the installation target partition.
+`'}
+            device=partition
+            ;;
+    esac
+    warnx="$3"
+    set +x
+    discs=$(lsblk -"${d:+$d}"po PATH,LABEL,SIZE,MODEL,SERIAL,TYPE /dev/sd? /dev/nvme??? /dev/mmcblk? 2> /dev/kmsg)
+    OLDIFS="$IFS"
+    IFS='
+'
+    # shellcheck disable=SC2086
+    set -- $discs
+    IFS="$OLDIFS"
+    j=1
+    for d; do
+        case "${d##* }" in
+            TYPE)
+                i='`
+``#'
+                sep=' '
+                ;;
+            disk)
+                sep=-
+                [ "$device" = partition ] && {
+                    i='``.'
+                    sep='.'
+                }
+                ;;
+            *)
+                sep=-
+                ;;
+        esac
+        [ "$sep" = - ] && {
+            i=$j
+            if [ "$j" -lt 10 ]; then
+                i=\`\`$i
+            elif [ "$j" -lt 100 ]; then
+                i=\`$i
+            fi
+            j=$((j + 1))
+        }
+        list="$list$i $sep ${d% *}
+"
+    done
+    warn='`
+`                  >>> >>> >>>       WARNING       <<< <<< <<<
+`                  >>>    Choose your target carefully!    <<<'
+    warn0='`                  >>>   A wrong choice will destroy the   <<<
+`                  >>>      contents of a whole disc!      <<<'
+    warnz='`                  >>> >>> >>>                     <<< <<< <<<'
+    case "$warnx" in
+        warn0)
+            warn=''
+            warn0=''
+            ;;
+        *)
+            warnx="$warn0"
+            ;;
+    esac
+    warn="$warn
+$warn0
+$warnz$message"
+
+    echo "Enter the # for your target $device here: " > /tmp/prompt
+
+    prompt_for_input
+
+    dev="${objSelected%% *}"
+    case "$device" in
+        disc)
+            diskDevice=$dev
+            ln -sf "$diskDevice" /run/initramfs/diskdev
+            ;;
+        partition)
+            pt_dev=$dev
+            get_diskDevice "$pt_dev"
+            ;;
+    esac
+    get_partitionTable "$diskDevice"
+}
+
+# Prompt for directory contents based on input glob "$@"
+# $1=<header message>
+# $2=<mountpoint directory>[/<directory path>]
+# $3=<input glob> $@
+#  sets variable objSelected
+prompt_for_path() {
+    local - o p i j warn message="$1" dir="$2"
+    set +x
+    list="${message}"
+    shift 2
+    # paths from glob
+    for p; do
+        j=$((j + 1))
+        i=$j
+        if [ "$j" -lt 10 ]; then
+            i=\`\`$i
+        elif [ "$j" -lt 100 ]; then
+            i=\`$i
+        fi
+        p="${p#*"$dir"/}"
+        o="'${p#/}'"
+        list="$list$i - ${o}
+"
+    done
+    case_block() {
+        case "$REPLY" in
+            0) obj='../' ;;
+            '' | *[!0-9]* | 0[0-9]*) obj='continue' ;;
+        esac
+    }
+    end_block() {
+        if [ "$REPLY" -lt 10 ]; then
+            REPLY=\`\`$REPLY
+        elif [ "$REPLY" -lt 100 ]; then
+            REPLY=\`$REPLY
+        fi
+        obj=${list#*"${REPLY} - '"}
+        obj="${obj%%[\`\'|
+]*}"
+    }
+    prompt_for_input
+}
+
 # Prompt for new partition size.
 prompt_for_size() {
     local - OLDIFS space warn sz sz_max
@@ -178,6 +369,12 @@ parse_cfgArgs() {
                 extra_attrs=${extra_attrs#ea=}
                 break
                 # ea,extra attribute,s must be the final arguments.
+                ;;
+            PROMPTDK | PROMPTPT)
+                prompt_for_device "${1#PROMPT}"
+                ;;
+            PROMPTDR)
+                prompt_for_path "$1"
                 ;;
             PROMPTSZ)
                 # Assigns sizeGiB.
