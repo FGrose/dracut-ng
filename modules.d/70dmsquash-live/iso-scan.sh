@@ -7,9 +7,9 @@ else
     PS4='+ $0@$LINENO: '
 fi
 command -v getarg > /dev/null || . /lib/dracut-lib.sh
+command -v get_diskDevice > /dev/null || . /lib/partition-lib.sh
 
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
-
 
 isopath=$1
 
@@ -45,6 +45,19 @@ setup_isoloop() {
     else
         mount -t auto -o ro "$devspec" /run/initramfs/isoscan || return 1
     fi
+    case "$isofile" in
+        PROMPTDR=*)
+            dir=${isofile#PROMPTDR=}
+            message="\`
+\`            .iso image files from: $pt_dev ($LABEL) $dir
+\`
+\`           Select the file to be booted.
+\`"
+            prompt_for_path "$message" /run/initramfs/isoscan"${dir%/}" /run/initramfs/isoscan"${dir%/}"/*.iso
+            isofile="${objSelected#* \'}"
+            isofile="${dir%/}/${isofile%\'}"
+            ;;
+    esac
     isofile=/run/initramfs/isoscan/"$isofile"
     if [ -f "$isofile" ]; then
         loopdev=$(losetup -P -r -f --show "$isofile")
@@ -61,8 +74,21 @@ setup_isoloop() {
 
 strstr "${isopath}" ":" && {
     devspec="${isopath%%:*}"
-    label_uuid_udevadm_trigger "$devspec"
-    devspec=$(readlink -f "$(label_uuid_to_dev "$devspec")")
+    if [ "$devspec" = PROMPTPT ]; then
+        sleep 0.5
+        udevadm trigger --subsystem-match block --settle
+        # Assign devspec.
+        message='
+`
+`               Select the partition that holds your .iso files.
+`'
+        prompt_for_device PT "$message" warn0
+        devspec="$pt_dev"
+        LABEL=$(lsblk -nro LABEL "$pt_dev")
+    else
+        label_uuid_udevadm_trigger "$devspec"
+        devspec=$(readlink -f "$(label_uuid_to_dev "$devspec")")
+    fi
     i=0
     until [ -e "$devspec" ] || [ "$i" -eq 20 ]; do
         sleep 0.5
