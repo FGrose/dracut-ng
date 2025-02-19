@@ -23,37 +23,6 @@ udevadm control --reload
 livedev="$1"
 ln -s "$livedev" /run/initramfs/livedev
 
-# Determine some attributes for the device - $1
-get_diskDevice() {
-    local - dev n syspath p_path
-    set -x
-    dev="${1##*/}"
-    syspath=/sys/class/block/"$dev"
-    n=0
-    until [ -d "$syspath" ] || [ "$n" -gt 9 ]; do
-        sleep 0.4
-        n=$((n + 1))
-    done
-    [ -d "$syspath" ] || return 1
-    if [ -f "$syspath"/partition ]; then
-        p_path=$(readlink -f "$syspath"/..)
-        diskDevice=/dev/"${p_path##*/}"
-    else
-        while read -r line; do
-            case "$line" in
-                DEVTYPE=disk) diskDevice=/dev/"$dev" ;;
-                DEVTYPE=loop) return 0 ;;
-            esac
-        done < "$syspath"/uevent
-    fi
-    { read -r optimalIO < "$syspath"/queue/optimal_io_size; } > /dev/null 2>&1
-    : "${optimalIO:=0}"
-    fsType=$(blkid /dev/"$dev")
-    fsType="${fsType#* TYPE=\"}"
-    fsType="${fsType%%\"*}"
-    ln -sf "$diskDevice" /run/initramfs/diskdev
-}
-
 [ -f "$livedev" ] || get_diskDevice "$livedev"
 
 devInfo=" $(get_devInfo "$livedev")"

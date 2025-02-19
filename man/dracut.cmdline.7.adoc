@@ -123,19 +123,22 @@ boot loader can make a device identified by `<devicename>` from an
 image file on the boot or other specified device. This allows GRUB to load
 the boot kernel and initramfs from the device made from the image file.
 
-**iso-scan/filename=**__[<devspec>__:]__<filepath>__::
+**iso-scan/filename=**[{__<devspec>__|PROMPTPT}:]{__<filepath>__|PROMPTDR=__<dirpath>__}::
     _dracut_ must independently identify the device holding the image file
     through its _dmsquash-live/iso-scan.sh_ code using the +
     *_iso-scan/filename_* parameter.
     * *_<devspec>_* may be specified as
     *_{`block:|UUID=|PARTUUID=|LABEL=|PARTLABEL=`}_*
-+
+    * *PROMPTPT* triggers an interactive menu for selecting the partition
+    bearing the .iso file.
 NOTE: Without the optional *_<devspec>_*, all mountable devices will be
 searched in `/dev/disk/by-uuid/*` order for the file specified by
 *_<filepath>_*.  The first matching file is set up as a loop device.
 +
     * *_<filepath>_* specifies the image file for loop setup by _dracut_ to
     access the root filesystem within.
+    * *PROMPTDR=_<dirpath>_* triggers an interactive menu for selecing a file
+    from the _<directory path>_ within the selected partition's filesystem.
 
 The disk device containing the .iso file will stay mounted after booting at
 `/run/initramfs/isoscandev` unless *_rd.live.ram_* is requested, in which

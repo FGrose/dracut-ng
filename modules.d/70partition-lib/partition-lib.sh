@@ -1,13 +1,65 @@
 #!/bin/sh
 # partition-lib.sh: utilities for partition editing
 
-plymouth --ping > /dev/null 2>&1 && {
-    export PLYMOUTH=PLYMOUTH
-    . /lib/plymouth-lib.sh
-}
+command -v parse_cfgArgs > /dev/null || . /lib/partition-lib-min.sh
 
 run_parted() {
     LC_ALL=C flock "$1" parted --script "$@"
+}
+
+# Copy image file or device with dd.
+# call in this fashion:
+#   src=<source image file or block device>
+#   dst=<destination path>
+#     [var=<name of variable holding the destination path>]
+#     [sz=<image size in bytes>]
+#     [msg=<message text for copy to persistent media>] dd_copy
+dd_copy() {
+    local src dst var sz msg ddir
+    ddir=${dst%/*}
+    [ "$ddir" != /dev ] && [ "$(stat -f -c %T "$ddir")" = tmpfs ] && {
+        src=$(readlink -f "$src")
+        [ "$sz" ] || sz=$(stat -c %s -- "$src")
+        check_live_ram "$((sz >> 20))"
+    }
+    [ "$ddir" = /dev ] && ddir="$diskDevice"
+
+    echo "Copying $src ${msg:=to RAM...}" > /dev/kmsg
+    echo ' (this may take a minute or so)' > /dev/kmsg
+    LC_ALL=C flock "$ddir" dd if="$src" of="$dst" ${sz:+count="${sz}"B} bs=8M iflag=nocache oflag=direct status=progress 2> /dev/kmsg
+    eval "${var:=_}=$dst"
+    echo "Done copying $src $msg" > /dev/kmsg
+}
+
+# Determine some attributes for the device - $1
+get_diskDevice() {
+    local - dev n syspath p_path
+    set -x
+    dev="${1##*/}"
+    syspath=/sys/class/block/"$dev"
+    n=0
+    until [ -d "$syspath" ] || [ "$n" -gt 9 ]; do
+        sleep 0.4
+        n=$((n + 1))
+    done
+    [ -d "$syspath" ] || return 1
+    if [ -f "$syspath"/partition ]; then
+        p_path=$(readlink -f "$syspath"/..)
+        diskDevice=/dev/"${p_path##*/}"
+    else
+        while read -r line; do
+            case "$line" in
+                DEVTYPE=disk) diskDevice=/dev/"$dev" ;;
+                DEVTYPE=loop) return 0 ;;
+            esac
+        done < "$syspath"/uevent
+    fi
+    { read -r optimalIO < "$syspath"/queue/optimal_io_size; } > /dev/null 2>&1
+    : "${optimalIO:=0}"
+    fsType=$(blkid /dev/"$dev")
+    fsType="${fsType#* TYPE=\"}"
+    fsType="${fsType%%\"*}"
+    ln -sf "$diskDevice" /run/initramfs/diskdev
 }
 
 # Set partitionTable, szDisk variables for diskDevice=$1
@@ -28,7 +80,7 @@ get_partitionTable() {
     }
 }
 
-# for partitionTable ptNbr/leading_field_string_pattern=$1
+# for partitionTable {ptNbr|leading_field_string_pattern}=$1
 pt_row() {
     local b
     # shellcheck disable=SC2295 # pattern matching desired
@@ -72,6 +124,31 @@ get_newptNbr() {
     set -- "$@"
     IFS=: parse_pt_row "$(pt_row "?*:$5")"
     newptNbr="$ptNbr"
+}
+
+# $1 - $diskDevice
+get_ESP() {
+    local -
+    set +x
+    [ "$partitionTable" ] || get_partitionTable "$1"
+    espNbr=${partitionTable%"${partitionTable#* esp;}"}
+    espRow="${espNbr##*;
+}"
+    espNbr=${espRow%%:*}
+    ESP=$(aptPartitionName "$1" "$espNbr")
+    ln -sf "$ESP" /run/initramfs/espdev
+}
+
+# Recommended ESP size in MiB
+get_sz_forESP() {
+    if [ "$szDisk" -lt 34359738368 ]; then
+        # Minimum ESP size of 512 MiB for disks smaller than 32 GiB.
+        echo 512
+    else
+        # Provide ESP with 128 MiB of additional space per 16 GiB of free disk
+        #  space for multi image boots.
+        echo "$(((((szDisk - freeSpaceStart) / 17179869184) << 7) + 512))"
+    fi
 }
 
 # Default case block for prompt_for_input().
@@ -142,6 +219,337 @@ Press <Escape> to toggle to/from the selection menu."
     echo "$obj"
     objSelected="$obj"
     return 0
+}
+
+# Prompt for $1 - DK | PT
+#           [$2] - message
+#           [$3] - warnx (warning line)
+#  Sets variable diskDevice or pt_dev for partition.
+prompt_for_device() {
+    local - OLDIFS discs d i j device dev list _list sep message warnx warn warn0 warnz
+    case "${1-PT}" in
+        DK)
+            # Assign diskDevice.
+            message=${2-'
+`
+`   Select the installation target disk.
+`'}
+            device=disc
+            d=d
+            ;;
+        PT)
+            # Assign partition
+            message=${2-'
+`
+`   Select the installation target partition.
+`'}
+            device=partition
+            ;;
+    esac
+    warnx="$3"
+    set +x
+    discs=$(lsblk -"${d:+$d}"po PATH,LABEL,SIZE,MODEL,SERIAL,TYPE /dev/sd? /dev/nvme??? /dev/mmcblk? 2> /dev/kmsg)
+    OLDIFS="$IFS"
+    IFS='
+'
+    # shellcheck disable=SC2086
+    set -- $discs
+    IFS="$OLDIFS"
+    j=1
+    for d; do
+        case "${d##* }" in
+            TYPE)
+                i='`
+``#'
+                sep=' '
+                ;;
+            disk)
+                sep=-
+                [ "$device" = partition ] && {
+                    i='``.'
+                    sep='.'
+                }
+                ;;
+            *)
+                sep=-
+                ;;
+        esac
+        [ "$sep" = - ] && {
+            i=$j
+            if [ "$j" -lt 10 ]; then
+                i=\`\`$i
+            elif [ "$j" -lt 100 ]; then
+                i=\`$i
+            fi
+            j=$((j + 1))
+        }
+        list="$list$i $sep ${d% *}
+"
+    done
+    warn='`
+`                  >>> >>> >>>       WARNING       <<< <<< <<<
+`                  >>>    Choose your target carefully!    <<<'
+    warn0='`                  >>>   A wrong choice will destroy the   <<<
+`                  >>>      contents of a whole disc!      <<<'
+    warnz='`                  >>> >>> >>>                     <<< <<< <<<'
+    case "$warnx" in
+        warn0)
+            warn=''
+            warn0=''
+            ;;
+        *)
+            warnx="$warn0"
+            ;;
+    esac
+    warn="$warn
+$warn0
+$warnz$message"
+
+    echo "Enter the # for your target $device here: " > /tmp/prompt
+
+    prompt_for_input
+
+    dev="${objSelected%% *}"
+    case "$device" in
+        disc)
+            diskDevice=$dev
+            ln -sf "$diskDevice" /run/initramfs/diskdev
+            ;;
+        partition)
+            pt_dev=$dev
+            get_diskDevice "$pt_dev"
+            ;;
+    esac
+    get_partitionTable "$diskDevice"
+}
+
+# Prompt for directory contents based on input glob "$@"
+# $1=<header message>
+# $2=<mountpoint directory>[/<directory path>]
+# $3=<input glob> $@
+#  sets variable objSelected
+prompt_for_path() {
+    local - o p i j warn message="$1" dir="$2"
+    set +x
+    list="${message}"
+    shift 2
+    # paths from glob
+    for p; do
+        j=$((j + 1))
+        i=$j
+        if [ "$j" -lt 10 ]; then
+            i=\`\`$i
+        elif [ "$j" -lt 100 ]; then
+            i=\`$i
+        fi
+        p="${p#*"$dir"/}"
+        o="'${p#/}'"
+        list="$list$i - ${o}
+"
+    done
+    case_block() {
+        case "$REPLY" in
+            0) obj='../' ;;
+            '' | *[!0-9]* | 0[0-9]*) obj='continue' ;;
+        esac
+    }
+    end_block() {
+        if [ "$REPLY" -lt 10 ]; then
+            REPLY=\`\`$REPLY
+        elif [ "$REPLY" -lt 100 ]; then
+            REPLY=\`$REPLY
+        fi
+        obj=${list#*"${REPLY} - '"}
+        obj="${obj%%[\`\'|
+]*}"
+    }
+    prompt_for_input
+}
+
+# Prompt for Live directory name
+prompt_for_livedir() {
+    local - d warn list
+    set +x
+    get_ESP "$diskDevice"
+    # Some hardware devices need more time to respond in very early boot.
+    sleep 0.1
+    if mount -n -t vfat -m -o check=s "$ESP" /run/initramfs/ESP; then
+        list='`
+`  Installed LiveOS directories:'
+        for d in /run/initramfs/ESP/*/images; do
+            d=${d#*ESP/}
+            d=${d%/images}
+            [ "$d" = "*" ] || list="$list
+    \`  $d"
+        done
+        for d in /run/initramfs/ESP/*/boot; do
+            d=${d#*ESP/}
+            d=${d%/boot}
+            [ "$d" = "*" ] || list="$list
+    \`  $d"
+        done
+    else
+        list='To recognize your image installation,'
+    fi
+    if [ "$base_dir" ]; then
+        list="$list
+\`  For a new overlay for the system image '$base_dir',"
+    else
+        list="$list
+\`  For the image labeled '$label',"
+    fi
+    echo 'Please enter a short, unique, & distinguishing Live directory name here:' > /tmp/prompt
+    [ "$PLYMOUTH" ] || list="$list
+\`"
+    case_block() {
+        case "$REPLY" in
+            *[[:space:]]* | *[[:cntrl:]]* | '')
+                echo "LiveDir '$REPLY' is null, has whitespace, or control characters; Please select another LiveDir name:" > /tmp/prompt
+                ;;
+            break)
+                Die "Forced break from prompt_for_livedir()."
+                ;;
+            *)
+                if [ -d /run/initramfs/ESP/"$REPLY" ]; then
+                    echo "LiveDir '$REPLY' already exists; Please select another LiveDir name:" > /tmp/prompt
+                else
+                    [ "$base_dir" ] && srcdir=$base_dir
+                    obj="$REPLY"
+                fi
+                ;;
+        esac
+    }
+
+    end_block() {
+        [ -b "$ESP" ] && umount /run/initramfs/ESP
+        [ "$srcdir" = PROMPT ] && srcdir=LiveOS
+        ln -sf "$REPLY" /run/initramfs/ovl_dir
+    }
+    prompt_for_input
+}
+
+# Prompt for Live directory name
+prompt_for_livedir() {
+    local - d warn list
+    set +x
+    get_ESP "$diskDevice"
+    # Some hardware devices need more time to respond in very early boot.
+    sleep 0.1
+    if mount -n -t vfat -m -o check=s "$ESP" /run/initramfs/ESP; then
+        list='`
+`  Installed LiveOS directories:'
+        for d in /run/initramfs/ESP/*/images; do
+            d=${d#*ESP/}
+            d=${d%/images}
+            [ "$d" = "*" ] || list="$list
+    \`  $d"
+        done
+        for d in /run/initramfs/ESP/*/boot; do
+            d=${d#*ESP/}
+            d=${d%/boot}
+            [ "$d" = "*" ] || list="$list
+    \`  $d"
+        done
+    else
+        list='To recognize your image installation,'
+    fi
+    if [ "$base_dir" ]; then
+        list="$list
+\`  For a new overlay for the system image '$base_dir',"
+    else
+        list="$list
+\`  For the image labeled '$label',"
+    fi
+    echo 'Please enter a short, unique, & distinguishing Live directory name here:' > /tmp/prompt
+    [ "$PLYMOUTH" ] || list="$list
+\`"
+    case_block() {
+        case "$REPLY" in
+            *[[:space:]]* | *[[:cntrl:]]* | '')
+                echo "LiveDir '$REPLY' is null, has whitespace, or control characters; Please select another LiveDir name:" > /tmp/prompt
+                ;;
+            break)
+                Die "Forced break from prompt_for_livedir()."
+                ;;
+            *)
+                if [ -d /run/initramfs/ESP/"$REPLY" ]; then
+                    echo "LiveDir '$REPLY' already exists; Please select another LiveDir name:" > /tmp/prompt
+                else
+                    [ "$base_dir" ] && srcdir=$base_dir
+                    obj="$REPLY"
+                fi
+                ;;
+        esac
+    }
+
+    end_block() {
+        [ -b "$ESP" ] && umount /run/initramfs/ESP
+        [ "$srcdir" = PROMPT ] && srcdir=LiveOS
+        ln -sf "$REPLY" /run/initramfs/ovl_dir
+    }
+    prompt_for_input
+}
+
+# Prompt for Live directory name
+prompt_for_livedir() {
+    local - d warn list
+    set +x
+    get_ESP "$diskDevice"
+    # Some hardware devices need more time to respond in very early boot.
+    sleep 0.1
+    if mount -n -t vfat -m -o check=s "$ESP" /run/initramfs/ESP; then
+        list='`
+`  Installed LiveOS directories:'
+        for d in /run/initramfs/ESP/*/images; do
+            d=${d#*ESP/}
+            d=${d%/images}
+            [ "$d" = "*" ] || list="$list
+    \`  $d"
+        done
+        for d in /run/initramfs/ESP/*/boot; do
+            d=${d#*ESP/}
+            d=${d%/boot}
+            [ "$d" = "*" ] || list="$list
+    \`  $d"
+        done
+    else
+        list='To recognize your image installation,'
+    fi
+    if [ "$base_dir" ]; then
+        list="$list
+\`  For a new overlay for the system image '$base_dir',"
+    else
+        list="$list
+\`  For the image labeled '$label',"
+    fi
+    echo 'Please enter a short, unique, & distinguishing Live directory name here:' > /tmp/prompt
+    [ "$PLYMOUTH" ] || list="$list
+\`"
+    case_block() {
+        case "$REPLY" in
+            *[[:space:]]* | *[[:cntrl:]]* | '')
+                echo "LiveDir '$REPLY' is null, has whitespace, or control characters; Please select another LiveDir name:" > /tmp/prompt
+                ;;
+            break)
+                Die "Forced break from prompt_for_livedir()."
+                ;;
+            *)
+                if [ -d /run/initramfs/ESP/"$REPLY" ]; then
+                    echo "LiveDir '$REPLY' already exists; Please select another LiveDir name:" > /tmp/prompt
+                else
+                    [ "$base_dir" ] && srcdir=$base_dir
+                    obj="$REPLY"
+                fi
+                ;;
+        esac
+    }
+
+    end_block() {
+        [ -b "$ESP" ] && umount /run/initramfs/ESP
+        [ "$srcdir" = PROMPT ] && srcdir=LiveOS
+        ln -sf "$REPLY" /run/initramfs/ovl_dir
+    }
+    prompt_for_input
 }
 
 # Prompt for new partition size.
@@ -233,64 +641,17 @@ $fslist
     return 0
 }
 
-parse_cfgArgs() {
-    local -
-    set -x
-    # shellcheck disable=SC2068
-    set -- $@ # rd_live_overlay
-    IFS=' 	
-'
-    for _; do
-        case "$1" in
-            '' | btrfs | ext[432] | f2fs | xfs)
-                p_ptfsType=${1:-${p_ptfsType:-ext4}}
-                ;;
-            recreate=*)
-                removePt="${1#recreate=}"
-                removePt=$(readlink -f "$(label_uuid_to_dev "$removePt")" 2> /dev/kmsg)
-                [ -b "$removePt" ] || {
-                    [ "$p_Partition" ] && removePt="$p_Partition"
-                }
-                ;;
-            ea=?*)
-                extra_attrs="${*}"
-                extra_attrs=${extra_attrs#ea=}
-                break
-                # ea,extra attribute,s must be the final arguments.
-                ;;
-            PROMPTSZ)
-                # Assigns sizeGiB.
-                prompt_for_size "$1"
-                ;;
-            PROMPTFS)
-                # Assigns fsType and rootflags.
-                prompt_for_fstype
-                ;;
-            *[!0-9]* | 0*)
-                # Anything but a positive integer:
-                [ "$1" = auto ] || p_Partition=$(label_uuid_to_dev "${1%%:*}")
-                strstr "$1" ":" && ovlpath=${1##*:}
-                ;;
-            *)
-                # any positive integer:
-                sizeGiB=$1
-                ;;
-        esac
-        shift
-    done
-}
-
 prep_Partition() {
     local n removePtNbr freeSpaceStart freeSpaceEnd byteMax
-    [ "$p_Partition" ] && ! [ -b "$p_Partition" ] \
-        && Die "The specified persistence partition, $p_Partition, is not recognized."
-    if [ "$p_Partition" ] && ! [ "$removePt" ]; then
+    [ "$p_pt" ] && ! [ -b "$p_pt" ] \
+        && Die "The specified persistence partition, $p_pt, is not recognized."
+    if [ "$p_pt" ] && ! [ "$removePt" ]; then
         info "Skipping overlay creation: a persistence partition already exists."
-        rd_live_overlay="$p_Partition"
-        ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.live.overlay=$p_Partition rd.live.overlay.overlayfs"
+        rd_overlay="$p_pt"
+        ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.overlay=$p_pt"
         return 0
-    elif [ ! "$rd_live_overlay" ]; then
-        info "Skipping overlay creation: kernel command line parameter 'rd.live.overlay' is not set."
+    elif [ ! "$rd_overlay" ]; then
+        info "Skipping overlay creation: kernel command line parameter 'rd.overlay' is not set."
         return 1
     fi
     freeSpaceEnd=$((szDisk - 1048576))
@@ -339,8 +700,10 @@ prep_Partition() {
     esac
     [ "$removePt" ] || {
         freeSpaceStart=$((${3%B} + 1))
-        byteMax=$((szDisk - 268435456))
+        # dd'd .iso size
+        sz=$((freeSpaceStart + 32768))
     }
+    byteMax=$((szDisk - 268435456))
 
     # Make optimalIO alignment at least 4 MiB.
     #   See https://www.gnu.org/software/parted/manual/parted.html#FOOT2 .
@@ -351,23 +714,105 @@ prep_Partition() {
         eval "$2"=$((($1 + optimalIO - 1) / optimalIO * optimalIO))
     }
 
+    case "$cfg" in
+        iso)
+            [ "$mklabel" ] && {
+                # dd'd .iso -> loaded .iso on reformatted disc.
+                mkdir -p /run/initramfs/iso
+                isofile=/run/initramfs/iso/${label}.iso
+                src="$diskDevice" dst="$isofile" sz="$sz" dd_copy
+                ln -s "$isofile" /run/initramfs/isofile
+            }
+            ;;
+    esac
+
+    [ "$espStart" ] && {
+        # Format ESP.
+        espStart=${2%B}
+        freeSpaceStart=$((espStart + (${szESP:=$(get_sz_forESP)} << 20) + 1))
+
+        optimize "$espStart" espStart
+
+        if [ -d /run/initramfs/isoscan ]; then
+            isoscandev="$(readlink -f /run/initramfs/isoscandev)"
+            isofile="$(readlink -f /run/initramfs/isofile)"
+        fi
+    }
+
+    [ "$espStart" ] && {
+        # Format ESP.
+        espStart=${2%B}
+        freeSpaceStart=$((espStart + (${szESP:=$(get_sz_forESP)} << 20) + 1))
+
+        optimize "$espStart" espStart
+
+        if [ -d /run/initramfs/isoscan ]; then
+            isoscandev="$(readlink -f /run/initramfs/isoscandev)"
+            isofile="$(readlink -f /run/initramfs/isofile)"
+        fi
+    }
+
+    [ "$espStart" ] && {
+        # Format ESP.
+        espStart=${2%B}
+        freeSpaceStart=$((espStart + (${szESP:=$(get_sz_forESP)} << 20) + 1))
+
+        optimize "$espStart" espStart
+
+        if [ -d /run/initramfs/isoscan ]; then
+            isoscandev="$(readlink -f /run/initramfs/isoscandev)"
+            isofile="$(readlink -f /run/initramfs/isofile)"
+        fi
+    }
+
     partitionStart=$freeSpaceStart
     optimize "$partitionStart" partitionStart
+
+    [ "$espStart" ] && {
+        if [ "$mklabel" ]; then
+            espNbr=1
+            unset -v 'removePtNbr'
+            wipefs --lock -af${QUIET:+q} "$diskDevice"
+        else
+            espCmd="rm ${espNbr:=1}"
+        fi
+        espCmd="${espCmd:+rm "$espNbr"} --align optimal mkpart ESP fat32 ${espStart}B ${espEnd:=$((partitionStart - 1))}B \
+            type $espNbr c12a7328-f81f-11d2-ba4b-00a0c93ec93b"
+    }
 
     if [ "$partitionStart" -gt "$byteMax" ]; then
         # Allow at least 256 MiB for persistence partition.
         warn "Skipping partition creation: less than 256 MiB of space is available."
         return 1
     fi
-    sizeGiB=${sizeGiB:+$((sizeGiB << 30))}
-    partitionEnd="$((partitionStart + ${sizeGiB:-$szDisk} - 512))"
-    [ "$partitionEnd" -gt "$freeSpaceEnd" ] && partitionEnd=$freeSpaceEnd
+    case "$size" in
+        *[Mm]) size=$((${size%[Mm]} << 20)) ;;
+        *) size=$((${size%[Gg]} << 30)) ;; # Default
+    esac
+    size=${size:+$size}
+    partitionEnd="$((partitionStart + ${size:-$szDisk} - 512))"
+    [ "$partitionEnd" -gt "$freeSpaceEnd" ] && partitionEnd="$freeSpaceEnd"
+    p_ptCmd="--align optimal mkpart ${ovl_dir}.. ${partitionStart}B ${partitionEnd}B"
 
     run_parted "$diskDevice" --fix ${removePtNbr:+rm $removePtNbr} \
         "${newptCmd:=--align optimal mkpart LiveOS_persist "${partitionStart}B" "${partitionEnd}B"}"
 
+    newptCmd="$p_ptCmd"
     # LiveOS persistence partition type
     newptType=ccea7cb3-70ba-4c31-8455-b906e46a00e2
+
+    # shellcheck disable=SC2086
+    run_parted "${diskDevice}" --fix ${mklabel:+mklabel ${mklabel:=gpt}} \
+        ${removePtNbr:+rm "$removePtNbr"} \
+        ${espCmd:+$espCmd} \
+        ${newptCmd}
+    : "${cfg:=ovl}"
+
+    [ "$espCmd" ] && {
+        udevadm trigger --name-match "$ESP" --action add --settle > /dev/kmsg 2>&1
+        mkfs_config fat ESP $((partitionStart - espStart))
+        create_Filesystem fat "$ESP"
+    }
 
     # Set new partition type with command - $@
     set_pt_type() {
@@ -379,12 +824,43 @@ prep_Partition() {
     # shellcheck disable=SC2086
     set_pt_type $newptCmd
 
-    p_Partition=$(aptPartitionName "$diskDevice" "$newPtNbr")
-    udevadm trigger --name-match "$p_Partition" --action add --settle > /dev/null 2>&1
-    ln -sf "$p_Partition" /run/initramfs/p_pt
+    [ "$p_pt" ] || {
+        p_pt=$(aptPartitionName "$diskDevice" "$newptNbr")
 
-    set_FS_opts_w "${fsType:-ext4}" p_ptFlags
-    mkfs_config "${p_ptfsType:=ext4}" LiveOS_persist $((partitionEnd - partitionStart + 1)) "${extra_attrs}"
-    wipefs --lock -af${QUIET:+q} "$p_Partition"
-    create_Filesystem "$p_ptfsType" "$p_Partition"
+        udevadm trigger --name-match "$p_pt" --action add --settle > /dev/kmsg 2>&1
+        ln -sf "$p_pt" /run/initramfs/p_pt
+
+        [ "$p_ptFlags" ] || set_FS_opts_w "${fsType:-ext4}" p_ptFlags
+        mkfs_config "${p_ptfsType:=ext4}" LiveOS_persist $((partitionEnd - partitionStart + 1)) "${extra_attrs}"
+        wipefs --lock -af${QUIET:+q} "$p_pt"
+        create_Filesystem "$p_ptfsType" "$p_pt"
+    }
+}
+
+install_Image() {
+    local src dst loopdev
+    case "$cfg" in
+        ciso)
+            mkdir -p "$mntDir"/isos
+            isofile="$mntDir/isos/${isofile##*/}"
+            src=/run/initramfs/isofile dst="$isofile" msg='to disk...' dd_copy
+            [ -h /run/initramfs/isoloop ] && {
+                losetup -d /run/initramfs/isoloop
+                umount /run/initramfs/isoscan > /dev/null 2>&1
+            }
+            ln -sf "$p_pt" /run/initramfs/isoscandev
+            [ "${DRACUT_SYSTEMD-}" ] && mount --make-rprivate /run
+            loopdev=$(losetup -f)
+            losetup -rP "$loopdev" "$isofile"
+            ln -sf "$loopdev" /run/initramfs/isoloop
+            livedev="${loopdev}p1"
+            ln -sf "$livedev" /run/initramfs/livedev
+            srcdir=LiveOS
+            ln -sf "$isofile" /run/initramfs/isofile
+            ;;
+    esac
+    [ -d /run/initramfs/iso ] && {
+        # Recover tmpfs storage space.
+        rm -rf -- /run/initramfs/iso
+    }
 }
