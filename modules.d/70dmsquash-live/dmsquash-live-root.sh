@@ -23,40 +23,6 @@ udevadm control --reload
 livedev="$1"
 ln -s "$livedev" /run/initramfs/livedev
 
-# Determine some attributes for the device - $1
-get_diskDevice() {
-    local dev n ls_dev
-    dev="$1"
-    ls_dev="lsblk -dnpro TYPE,PKNAME,OPT-IO,FSTYPE $dev"
-    # shellcheck disable=SC2046
-    set -- $($ls_dev 2>&1)
-    until [ "$1" != lsblk: ] || [ ${n:=0} -gt 9 ]; do
-        sleep 0.1
-        n=$((n + 1))
-        # shellcheck disable=SC2046
-        set -- $($ls_dev 2>&1)
-    done
-    case "$1" in
-        disk)
-            diskDevice="$dev"
-            shift
-            ;;
-        part)
-            diskDevice="$2"
-            shift 2
-            ;;
-        loop)
-            return 0
-            ;;
-        lsblk:)
-            # shellcheck disable=SC3028,SC2128
-            Die "get_diskDevice() failed near $BASH_SOURCE@LINENO:$((LINENO - 18)) ${FUNCNAME:+$FUNCNAME()} 
-    > $* <"
-            ;;
-    esac
-    optimalIO="$1"
-    fsType="$2"
-}
 [ -f "$livedev" ] || get_diskDevice "$livedev"
 
 # shellcheck disable=SC2046
