@@ -10,6 +10,42 @@ run_parted() {
     LC_ALL=C flock "$1" parted --script "$@"
 }
 
+# Determine some attributes for the device - $1
+get_diskDevice() {
+    local dev n ls_dev
+    dev="$1"
+    ls_dev="lsblk -dnpro TYPE,PKNAME,OPT-IO,FSTYPE $dev"
+    # shellcheck disable=SC2046
+    set -- $($ls_dev 2>&1)
+    until [ "$1" != lsblk: ] || [ ${n:=0} -gt 9 ]; do
+        sleep 0.4
+        n=$((n + 1))
+        # shellcheck disable=SC2046
+        set -- $($ls_dev 2>&1)
+    done
+    case "$1" in
+        disk)
+            diskDevice="$dev"
+            shift
+            ;;
+        part)
+            [ "${2#/dev/loop}" = "$2" ] || return 0
+            diskDevice="$2"
+            shift 2
+            ;;
+        loop)
+            return 0
+            ;;
+        lsblk:)
+            # shellcheck disable=SC3028,SC2128
+            Die "get_diskDevice() failed near $BASH_SOURCE@LINENO:$((LINENO - 18)) ${FUNCNAME:+$FUNCNAME()} 
+    > $* <"
+            ;;
+    esac
+    optimalIO="$1"
+    fsType="$2"
+}
+
 # Set partitionTable, szDisk variables for diskDevice=$1
 # partitionTable hold values for latest call to this function.
 get_partitionTable() {
@@ -84,6 +120,198 @@ get_LiveOS_persist() {
         ln -sf "$p_Partition" /run/initramfs/p_pt
         p_ptfsType="$ptFStype"
     }
+}
+
+# Prompt for $1 - DK | PT
+#           [$2] - message
+#           [$3] - warnx (warning line)
+#  Sets variable diskDevice or pt_dev for partition.
+prompt_for_device() {
+    local - OLDIFS discs d i j device dev list _list listNbr sep message warnx warn warn0 warnz
+    case "${1-PT}" in
+        DK)
+            # Assign diskDevice.
+            message=${2-'
+`
+`   Select the installation target disk.
+`'}
+            device=disc
+            d=d
+            ;;
+        PT)
+            # Assign partition
+            message=${2-'
+`
+`   Select the installation target partition.
+`'}
+            device=partition
+            ;;
+    esac
+    warnx="$3"
+    set +x
+    discs=$(lsblk -"$d"po PATH,LABEL,SIZE,MODEL,SERIAL,TYPE /dev/sd? /dev/nvme??? /dev/mmcblk? 2> /dev/kmsg)
+    OLDIFS="$IFS"
+    IFS='
+'
+    # shellcheck disable=SC2086
+    set -- $discs
+    IFS="$OLDIFS"
+    j=1
+    for d; do
+        case "${d##* }" in
+            TYPE)
+                i='`
+`#'
+                sep=' '
+                ;;
+            disk)
+                sep=-
+                [ "$device" = partition ] && {
+                    i='`.'
+                    sep='.'
+                }
+                ;;
+            *)
+                sep=-
+                ;;
+        esac
+        [ "$sep" = - ] && {
+            i=$j
+            [ "$j" -lt 10 ] && i=\`$i
+            j=$((j + 1))
+        }
+        list="$list$i $sep ${d% *}
+"
+    done
+    warn='`
+`                  >>> >>> >>>       WARNING       <<< <<< <<<
+`                  >>>    Choose your target carefully!    <<<'
+    warn0='`                  >>>   A wrong choice will destroy the   <<<
+`                  >>>      contents of a whole disc!      <<<'
+    warnz='`                  >>> >>> >>>                     <<< <<< <<<'
+    case "$warnx" in
+        warn0)
+            warn=''
+            warn0=''
+            ;;
+        *)
+            warnx="$warn0"
+            ;;
+    esac
+    warn="$warn
+$warn0
+$warnz$message"
+    [ "$PLYMOUTH" ] || _list="
+$warn
+$list
+Enter the number for your target $device here: "
+
+    {
+        flock -s 9
+        while :; do
+            if [ "$PLYMOUTH" ]; then
+                IFS='
+' plym_write "$warn
+$list
+Press <Escape> to toggle to/from your disc selection menu."
+                listNbr=$(plymouth ask-question --prompt="Enter the number for your target $device here")
+            elif [ "${DRACUT_SYSTEMD-}" ]; then
+                echo "${_list%
+*}" > /dev/kmsg
+                listNbr=$(systemd-ask-password --echo=yes --timeout=0 "Enter the number for your target $device here:")
+            else
+                read -p "$_list" -r listNbr
+            fi
+            case "$listNbr" in
+                '') return 1 ;;
+                *[!0-9]*) continue ;;
+            esac
+            [ "$listNbr" -lt 10 ] && listNbr=\`$listNbr
+            dev="${list#*
+"$listNbr" - }"
+            dev="${dev%% *}"
+            [ "$dev" = '`
+`#' ] || break
+        done
+    } 9> /.console_lock
+    case "$device" in
+        disc)
+            diskDevice=$dev
+            ;;
+        partition)
+            pt_dev=$dev
+            get_diskDevice "$pt_dev"
+            ;;
+    esac
+    get_partitionTable "$diskDevice"
+    echo "$dev"
+    return 0
+}
+
+# Prompt for directory contents based on input glob "$@"
+# $1=<header message>
+# $2=<mountpoint directory>[/<directory path>]
+# $3=<input glob $@
+#  sets variable objSelected
+prompt_for_path() {
+    local - o p i j list listNbr obj message="$1" dir="$2"
+    set +x
+    list="${message}
+\` #   SIZE   NAME
+"
+    shift 2
+    for p; do
+        j=$((j + 1))
+        i=$j
+        if [ "$j" -lt 10 ]; then
+            i=\`\`$i
+        elif [ "$j" -lt 100 ]; then
+            i=\`$i
+        fi
+        p="$(ls -1hs --quoting-style=shell-always "$p")"
+        o="${p%% *}"
+        p="${p#*"$dir"/}"
+        o="${o}  '${p#/}"
+        list="$list$i - ${o}
+"
+    done
+    [ "$PLYMOUTH" ] || _list="
+$list
+Enter the number for your target path here: "
+    {
+        flock -s 9
+        while [ "${obj:-#}" = '#' ]; do
+            if [ "$PLYMOUTH" ]; then
+                IFS='
+' plym_write "$list
+Press <Escape> to toggle to/from your path selection menu."
+                listNbr=$(plymouth ask-question --prompt="Enter the number for your target file here")
+            elif [ "${DRACUT_SYSTEMD-}" ]; then
+                echo "${_list%
+*}" > /dev/kmsg
+                listNbr=$(systemd-ask-password --echo=yes --timeout=0 "Enter the number for your target file here:")
+            else
+                read -p "$_list" -r listNbr
+            fi
+            case "$listNbr" in
+                '') return 1 ;;
+                *[!0-9]* | 0[0-9]*) continue ;;
+            esac
+            if [ "$listNbr" -lt 10 ]; then
+                listNbr=\`\`$listNbr
+            elif [ "$listNbr" -lt 100 ]; then
+                listNbr=\`$listNbr
+            fi
+            obj="${list#*
+"$listNbr" - }"
+            obj="${obj%%
+*}"
+            obj="${obj##* }"
+        done
+    } 9> /.console_lock
+    echo "$obj"
+    objSelected="$obj"
+    return 0
 }
 
 # Prompt for new partition size.
