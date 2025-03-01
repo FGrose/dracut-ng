@@ -107,9 +107,18 @@ getargbool 0 rd.live.overlay.thin && thin_snapshot=yes
 
 # mount the backing of the live image first
 case $livedev_fstype in
+    iso9660)
+        [ -f "$livedev" ] && {
+            loopdev=$(losetup -f)
+            losetup -rP "$loopdev" "$livedev"
+            udevadm trigger --name-match="$loopdev" --action=add --settle > /dev/null 2>&1
+            livedev=$loopdev
+        }
+        mntcmd="mount -m -n -t iso9660"
+        ;;
     squashfs | erofs)
         # no mount needed - we've already got the LiveOS image in $livedev
-        SQUASHED="$livedev"
+        ROROOTFS=$livedev
         ;;
     ntfs)
         [ -x "/sbin/mount-ntfs-3g" ] && {
@@ -121,14 +130,16 @@ case $livedev_fstype in
         die "Cannot mount live image (unknown filesystem type $livedev_fstype)."
         ;;
     *)
-        if [ -f "$livedev" ]; then
-            FSIMG=$livedev
-        else
-            mount -m -n -t "$livedev_fstype" -o "${liverw:-ro}" "$livedev" /run/initramfs/live \
-            || die "Failed to mount block device of live image"
-        fi
+        [ -f "$livedev" ] && FSIMG=$livedev
+        mntcmd="mount -m -n -t $livedev_fstype"
         ;;
 esac
+[ "${mntcmd+mount}" ] && {
+    # workaround some timing problem
+    sleep 0.1
+    $mntcmd -o ${liverw:-ro} "$livedev" /run/initramfs/live > /dev/kmsg 2>&1 \
+        || die "Failed to mount block device of live image."
+}
 
 # overlay setup helper function
 do_live_overlay() {
