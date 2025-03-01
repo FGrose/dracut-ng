@@ -111,27 +111,42 @@ getargbool 0 rd.live.overlay.thin && thin_snapshot=yes
 
 # mount the backing of the live image first
 mkdir -m 0755 -p /run/initramfs/live
-if [ -f "$livedev" ]; then
-    # no mount needed - we've already got the LiveOS image in initramfs
-    # check filesystem type and handle accordingly
-    case "$livedev_fstype" in
-        squashfs | erofs) SQUASHED=$livedev ;;
-        auto) die "cannot mount live image (unknown filesystem type $livedev_fstype)" ;;
-        *) FSIMG=$livedev ;;
-    esac
-else
-    if [ "$livedev_fstype" = squashfs ] || [ "$livedev_fstype" = erofs ]; then
+case "$livedev_fstype" in
+    auto)
+        die "cannot mount live image (unknown filesystem type $livedev_fstype)"
+        ;;
+    iso9660)
+        [ -f "$livedev" ] && {
+            loopdev=$(losetup -f)
+            losetup -rP "$loopdev" "$livedev"
+            udevadm trigger --name-match="$loopdev" --action=add --settle > /dev/null 2>&1
+            ln -s "$loopdev" /run/initramfs/isoloop
+            ln -s "$livedev" /run/initramfs/isofile
+            livedev=$loopdev
+        }
+        mntcmd="mount -n -t $livedev_fstype"
+        ;;
+    squashfs | erofs)
         # no mount needed - we've already got the LiveOS image in $livedev
-        SQUASHED=$livedev
-    elif [ "$livedev_fstype" != ntfs ]; then
-        if ! mount -n -t "$livedev_fstype" -o "${liverw:-ro}" "$livedev" /run/initramfs/live; then
-            die "Failed to mount block device of live image"
-            exit 1
+        ROROOTFS=$livedev
+        ;;
+    ntfs)
+        [ -x /sbin/mount-ntfs-3g ] && mntcmd=/sbin/mount-ntfs-3g
+        ;;
+    *)
+        if [ -f "$livedev" ]; then
+            FSIMG=$livedev
+        else
+            mntcmd="mount -n -t $livedev_fstype"
         fi
-    else
-        [ -x /sbin/mount-ntfs-3g ] && /sbin/mount-ntfs-3g -o "${liverw:-ro}" "$livedev" /run/initramfs/live
-    fi
-fi
+        ;;
+esac
+[ "${mntcmd+mount}" ] && {
+    # workaround some timing problem
+    sleep 0.1
+    $mntcmd -o ${liverw:-ro} "$livedev" /run/initramfs/live > /dev/kmsg 2>&1 \
+        || die "Failed to mount block device of live image."
+}
 
 # overlay setup helper function
 do_live_overlay() {
