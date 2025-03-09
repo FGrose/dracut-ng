@@ -53,6 +53,8 @@ fi
 [ ! -h /dev/stdout ] && ln -s /proc/self/fd/1 /dev/stdout > /dev/null 2>&1
 [ ! -h /dev/stderr ] && ln -s /proc/self/fd/2 /dev/stderr > /dev/null 2>&1
 
+cfg_output
+
 if ! ismounted /dev/pts; then
     mkdir -m 0755 -p /dev/pts
     mount -t devpts -o gid=5,mode=600,noexec,nosuid devpts /dev/pts > /dev/null
@@ -98,7 +100,7 @@ trap "emergency_shell Signal caught!" 0
 
 if [ "$RD_DEBUG" = "yes" ]; then
     mkfifo /run/initramfs/loginit.pipe
-    loginit "$DRACUT_QUIET" < /run/initramfs/loginit.pipe > /dev/console 2>&1 &
+    loginit "$INFO_SHOW" < /run/initramfs/loginit.pipe > /dev/console 2>&1 &
     exec > /run/initramfs/loginit.pipe 2>&1
     cat /proc/cmdline
 else
