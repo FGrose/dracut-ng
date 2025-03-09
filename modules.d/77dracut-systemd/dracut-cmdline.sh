@@ -5,6 +5,14 @@ if [ -f /dracut-state.sh ]; then
 fi
 command -v getarg > /dev/null || . /lib/dracut-lib.sh
 
+setdebug
+# prepare the /dev directory
+[ ! -h /dev/fd ] && ln -s /proc/self/fd /dev/fd > /dev/null 2>&1
+[ ! -h /dev/stdin ] && ln -s /proc/self/fd/0 /dev/stdin > /dev/null 2>&1
+[ ! -h /dev/stdout ] && ln -s /proc/self/fd/1 /dev/stdout > /dev/null 2>&1
+[ ! -h /dev/stderr ] && ln -s /proc/self/fd/2 /dev/stderr > /dev/null 2>&1
+cfg_output
+
 [ -f /usr/lib/initrd-release ] && . /usr/lib/initrd-release
 [ -n "$DRACUT_VERSION" ] && info "dracut-$DRACUT_VERSION"
 
