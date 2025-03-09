@@ -3,7 +3,8 @@
 # turn off debugging
 set +x
 
-QUIET=$1
+# INFO_SHOW(_while_quiet) flag from kernel command line parameters
+INFO_SHOW=$1
 
 printf "%s" "$$" > /run/initramfs/loginit.pid
 
@@ -18,6 +19,6 @@ while read -r line || [ -n "$line" ]; do
     fi
     echo "<31>dracut: $line" >&5
     # if "quiet" is specified we output to /dev/console
-    [ "$QUIET" = "yes" ] || echo "dracut: $line"
+    [ "$INFO_SHOW" = "yes" ] && echo "dracut: $line"
     echo "$line" >&6
 done
