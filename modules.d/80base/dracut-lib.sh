@@ -68,17 +68,13 @@ trim() {
 if [ -z "${DRACUT_SYSTEMD-}" ]; then
 
     warn() {
-        check_quiet
         echo "<28>dracut Warning: $*" > /dev/kmsg
         echo "dracut Warning: $*" >&2
     }
 
     info() {
-        check_quiet
         echo "<30>dracut: $*" > /dev/kmsg
-        if [ "$DRACUT_QUIET" != "yes" ]; then
-            echo "dracut: $*" >&2
-        fi
+        [ "$INFO_SHOW" = "yes" ] && echo "dracut: $*" >&2
     }
 
 else
@@ -450,16 +446,35 @@ die() {
     exit 1
 }
 
-check_quiet() {
-    if [ -z "$DRACUT_QUIET" ]; then
-        DRACUT_QUIET="yes"
-        getargbool 0 rd.info && DRACUT_QUIET="no"
-        getargbool 0 rd.debug && DRACUT_QUIET="no"
-        getarg quiet || DRACUT_QUIET="yes"
-        a=$(getarg loglevel=)
-        [ -n "$a" ] && [ "$a" -ge 28 ] && DRACUT_QUIET="yes"
-        export DRACUT_QUIET
-    fi
+# Set INFO_SHOW(_while_quiet) based on kernel command line parameters.
+# Also export flags for output, verbosity, & quietude.
+cfg_output() {
+    [ "$INFO_SHOW" ] || {
+        INFO_SHOW="no"
+        getargbool 0 rd.info && INFO_SHOW="info"
+        [ "$RD_DEBUG" = yes ] && INFO_SHOW="yes"
+        getarg quiet || INFO_SHOW="yes"
+        local a
+        a=$(getarg loglevel=) && [ "$a" -ge 28 ] && INFO_SHOW="no"
+    }
+    case "$INFO_SHOW" in
+        yes)
+            VERBOSE=v
+            OUTPUT=/dev/stdout
+            QUIET=''
+            ;;
+        info)
+            INFO_SHOW="yes"
+            VERBOSE=''
+            OUTPUT=/dev/null
+            QUIET=q
+            ;;
+        *)
+            QUIET=q
+            OUTPUT=/dev/null
+            ;;
+    esac
+    export INFO_SHOW VERBOSE OUTPUT QUIET
 }
 
 incol2() {
