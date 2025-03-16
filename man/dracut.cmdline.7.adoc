@@ -1399,7 +1399,7 @@ snapshot of the root filesystem or the OverlayFS mount will use an additional
 lower layer with the root filesystem.
 --
 
-**rd.live.image**[=__esp[=<sizeMiB>]__]::
+**rd.live.image**[=__esp[=<sizeMiB>__]]::
 This parameter without an argument supports the legacy syntax of passing just
 the base root filesystem partition *root=_<device specification>_* instead
 of *root=live:_<device specification>_*.
@@ -1413,6 +1413,7 @@ counterparts in the root filesystem /boot/ directory to facilitate programmatic
 updates.  The default *_<sizeMiB>_* is 512 MiB for disks smaller than 32 GiB
 and another 256 MiB is added to the default per 16 GiB of end-of-disk free
 space.
++
 NOTE: When a target disk is partitioned by a **rd.live.overlay=** directive,
 a new, default ESP will be created automatically and the esp parameter can be
 omitted.
