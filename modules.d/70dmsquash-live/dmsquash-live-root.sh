@@ -457,9 +457,9 @@ if [ "$OverlayFS" ]; then
     # Add an OverlayFS for persistent writes.
     do_overlayfs
 else
-    [ "${DRACUT_SYSTEMD-}" ] || {
-        printf 'mount %s /dev/mapper/live-rw %s\n' "${rflags:+-o $rflags}" "$NEWROOT" > "$hookdir"/mount/01-$$-live.sh
-    }
+    [ "${DRACUT_SYSTEMD-}" ] || printf \
+        'mount %s /dev/mapper/live-rw %s\n' "${rflags:+-o $rflags}" "$NEWROOT" \
+        > "$hookdir"/mount/01-$$-live.sh
 fi
 [ -e "$SQUASHED" ] && umount -l /run/initramfs/squashfs
 
@@ -468,9 +468,6 @@ fi
     printf '%s' " $ETC_KERNEL_CMDLINE" >> /etc/kernel/cmdline
     [ "${DRACUT_SYSTEMD-}" ] && systemctl daemon-reload
 }
-
 ln -s null /dev/root
-
 need_shutdown
-
 exit 0
