@@ -532,22 +532,9 @@ parse_cfgArgs() {
                     esac
                 }
                 ;;
-            mklabel)
-                mklabel=gpt
-                ESP=$(aptPartitionName "$diskDevice" 1)
-                ln -sf "$ESP" /run/initramfs/espdev
-                espStart=1
-                ;;
-            ropt)
-                cfg="$1"
-                ;;
             auto)
                 espStart=1
                 cfg=ovl
-                ;;
-            iso | ciso)
-                cfg="$1"
-                [ -h /run/initramfs/isofile ] && isofile=$(readlink -f /run/initramfs/isofile)
                 ;;
             new_pt_for:*)
                 # New overlay partition for an existing live_dir:
@@ -664,18 +651,6 @@ prep_Partition() {
             && eval "$2"=$((($1 / optimalIO + 1) * optimalIO))
     }
 
-    case "$cfg" in
-        iso | ropt)
-            [ "$mklabel" ] && {
-                # dd'd .iso -> loaded .iso or ropt on reformatted disc.
-                mkdir -p /run/initramfs/iso
-                isofile=/run/initramfs/iso/${label}.iso
-                src="$diskDevice" dst="$isofile" sz="$sz" dd_copy
-                ln -s "$isofile" /run/initramfs/isofile
-            }
-            ;;
-    esac
-
     [ "$espStart" ] && {
         # Format ESP.
         espStart=${2%B}
@@ -703,26 +678,6 @@ prep_Partition() {
         espCmd="${espCmd:+rm "$espNbr"} --align optimal mkpart ESP fat32 ${espStart}B ${espEnd:=$((partitionStart - 1))}B \
             type $espNbr c12a7328-f81f-11d2-ba4b-00a0c93ec93b"
     }
-
-    case "$cfg" in
-        ropt)
-            if [ -d /run/initramfs/iso ]; then
-                loopdev=$(losetup -P -r -f --show /run/initramfs/isofile)
-            else
-                loopdev=$(readlink -f /run/initramfs/isoloop)
-            fi
-            mount -n -m -r -t iso9660 "$loopdev"p1 /run/initramfs/live
-            sz=$(blkid --probe --match-tag FSSIZE --output value --usages filesystem -- /run/initramfs/live/LiveOS/"$squash_image")
-
-            umount -d /run/initramfs/live
-            losetup -d "$loopdev"
-            roptStart=$partitionStart
-            partitionStart=$((roptStart + sz + 1))
-            optimize "$partitionStart" partitionStart
-            roptCmd="--align optimal mkpart $live_dir ${roptStart}B $((partitionStart - 1))B"
-            espEnd=$((roptStart - 1))
-            ;;
-    esac
 
     if [ "$partitionStart" -gt "$byteMax" ]; then
         # Allow at least 256 MiB for persistence partition.
@@ -785,65 +740,5 @@ prep_Partition() {
         mkfs_config "${p_ptfsType:=ext4}" LiveOS_persist $((partitionEnd - partitionStart + 1)) "${extra_attrs}"
         wipefs --lock -af${QUIET:+q} "$p_Partition"
         create_Filesystem "$p_ptfsType" "$p_Partition"
-    }
-}
-
-install_Image() {
-    local src dst loopdev
-    case "$cfg" in
-        ciso)
-            mkdir -p "$mntDir"/isos
-            isofile="$mntDir/isos/${isofile##*/}"
-            src=/run/initramfs/isofile dst="$isofile" msg='to disk...' dd_copy
-            [ -h /run/initramfs/isoloop ] && {
-                losetup -d /run/initramfs/isoloop
-                umount /run/initramfs/isoscan > /dev/null 2>&1
-            }
-            ln -sf "$p_Partition" /run/initramfs/isoscandev
-            [ "${DRACUT_SYSTEMD-}" ] && mount --make-rprivate /run
-            loopdev=$(losetup -P -r -f --show "$isofile")
-            ln -sf "$loopdev" /run/initramfs/isoloop
-            livedev="${loopdev}p1"
-            ln -sf "$livedev" /run/initramfs/livedev
-            srcdir=LiveOS
-            ln -sf "$isofile" /run/initramfs/isofile
-            ;;
-        ropt)
-            umount /run/initramfs/rorootfs
-            src=$ROROOTFS dst=$ro_Partition msg='to disk...' dd_copy
-            losetup -d "$ROROOTFS"
-            ROROOTFS=$ro_Partition
-
-            if [ "$base_dir" ]; then
-                roPARTUUID=$(readlink /run/initramfs/live/"${base_dir}"/rorootfs.img)
-                roPARTUUID=${roPARTUUID##*/}
-            else
-                roPARTUUID=$(lsblk -nro PARTUUID "$ro_Partition")
-            fi
-            ln -sf "$roPARTUUID" /run/initramfs/live_partuuid
-            # Set ovlpath.
-            ovlpath="/${live_dir}/overlay-${label}-$roPARTUUID"
-            uuid=$roPARTUUID
-            ;;
-        ropt_2)
-            cd /run/initramfs/live"${base_dir:+/$base_dir}" || Die "Unable to change directory to /run/initramfs/live${base_dir:+/$base_dir}"
-            # Copy source image minus LiveOS directory and any overlay.
-            find . -type f \! -path ./LiveOS -prune \! -path ./overlay-\* -prune \
-                \! -path ./ovlwork -prune \! -name squashfs.img -prune \! -name rorootfs.img -prune | cpio -p -dum --quiet "$mntDir/$live_dir"/.
-            cd - || Die "Problem changing directory from /run/initramfs/live${base_dir:+/$base_dir}"
-            umount -d /run/initramfs/live
-            losetup -d /run/initramfs/isoloop
-            umount /run/initramfs/isoscan
-            rmdir /run/initramfs/isoscan
-            # Establish link to rorootfs base partition.
-            ln -sf /dev/disk/by-partuuid/"$roPARTUUID" "${mntDir}/${live_dir}"/rorootfs.img
-            mount --bind "$mntDir/$live_dir" /run/initramfs/live
-            ln -sf "$p_Partition" /run/initramfs/livedev
-            rm -- /run/initramfs/isoloop /run/initramfs/isofile /run/initramfs/isoscandev
-            ;;
-    esac
-    [ -d /run/initramfs/iso ] && {
-        # Recover tmpfs storage space.
-        rm -rf -- /run/initramfs/iso
     }
 }
