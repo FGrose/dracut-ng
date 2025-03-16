@@ -894,6 +894,10 @@ parse_cfgArgs() {
                     esac
                 }
                 ;;
+            auto)
+                espStart=1
+                cfg=ovl
+                ;;
             esp=*)
                 szESP=${1#esp=}
                 espStart=1
