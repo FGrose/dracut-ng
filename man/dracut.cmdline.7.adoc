@@ -1391,7 +1391,7 @@ snapshot of the root filesystem or the OverlayFS mount will use an additional
 lower layer with the root filesystem.
 --
 
-**rd.live.image**[=__esp[=<sizeMiB>]__]::
+**rd.live.image**[=__esp[=<sizeMiB>__]]::
 This parameter without an argument supports the legacy syntax of passing just
 the base root filesystem partition *root=_<device specification>_* instead
 of *root=live:_<device specification>_*.
@@ -1405,30 +1405,13 @@ counterparts in the root filesystem /boot/ directory to facilitate programmatic
 updates.  The default *_<sizeMiB>_* is 512 MiB for disks smaller than 32 GiB
 and another 256 MiB is added to the default per 16 GiB of end-of-disk free
 space.
++
 NOTE: When a target disk is partitioned by a **rd.live.overlay=** directive,
 a new, default ESP will be created automatically and the esp parameter can be
 omitted.
 +
 This feature facilitates updating the image kernel version and installing
 multiple boot images or alternative initrd images on the boot device.
-* *_<devspec>_* specifies the path to a device with a mountable filesystem and
-is used to designate the target disk when a new installation is desired on an
-arbitrary disk.
-*_<devspec>_* may be in the form of
-+
-{`serial=<devserial>/serial/<partspec>|UUID=?*|PARTUUID=?*|LABEL=?*|PARTLABEL=?*|/dev/?*`}
-+
-serial=_<devserial>_/serial/[_<partspec>_] specifies the ID_SERIAL_SHORT
-property value for the target disk device followed by `/serial/` and optional
-_<partspec>_, where _<partspec>_ is a numeric only partition number or one of
-the other _<devspec>_ specifications.
-* *PROMPTDK* triggers an interactive menu for selecting the target disk.
-* *mklabel* causes the specified disk to be totally repartitioned with a new
-GUID Partition Table (GPT).
-* *ropt* signals the creation of a partition installed with the read-only root
-filesystem (squashfs.img or rorootfs.img with SquashFS or EROFS image) from a
-.iso image source.  This results in a LiveOS OverlayFS root filesytem with no
-loop devices.
 
 Uncompressed live filesystem image::
 When the live system was installed with the '--skipcompress' option of the

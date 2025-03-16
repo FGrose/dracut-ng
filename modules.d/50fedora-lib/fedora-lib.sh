@@ -119,6 +119,7 @@ s/\s+initrd=\S+//
 s/\s+rootflags=\S*//
 s/\<rd\.live\.\S+\s*//g
 s/\s+(ro|rw)(\s+|$)/ /
+s;iso-scan/filename=\S+ ; ;
 s/root=live:\S+ /root=live:CDLABEL=placeholder /
     /\s+(\\$\\{basicgfx\\}|nomodeset)($|\s+)/ {
 s/\s+(\\$\\{basicgfx\\}|nomodeset)($|\s+)/ \1 rd\.debug\2/
@@ -139,7 +140,7 @@ s/\s+(quiet|rhgb|splash)\s+(quiet|rhgb|splash)\s+/ /
     esac
     cfgargs="rd.live.overlay.overlayfs=LiveOS_rootfs${ROOTFLAGS:+ rootflags=$ROOTFLAGS}"
     cfgargs="$(escape "$cfgargs")"
-    rootcfg="${rootcfg}${_live_dir:+ rd.live.dir=$_live_dir}"
+    rootcfg="$rootcfg${_live_dir:+ rd.live.dir=$_live_dir}"
     rootcfg="$(escape "$rootcfg")"
     [ "$IMG" = initrd.img ] && IMG=initrd*.img
 
