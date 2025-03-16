@@ -36,6 +36,7 @@ install() {
     inst_hook pre-udev 30 "$moddir/dmsquash-live-genrules.sh"
     inst_hook pre-udev 30 "$moddir/dmsquash-liveiso-genrules.sh"
     inst_hook pre-pivot 52 "$moddir/dmsquash-live-pre-pivot-actions.sh"
+    inst_hook pre-shutdown 30 "$moddir/dmsquash-live-pre-shutdown.sh"
     inst_script "$moddir/dmsquash-live-root.sh" "/sbin/dmsquash-live-root"
     inst_script "$moddir/iso-scan.sh" "/sbin/iso-scan"
     inst_script "$moddir/../74rootfs-block/mount-root.sh" "/sbin/mount-root"
