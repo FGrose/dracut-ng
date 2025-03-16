@@ -65,6 +65,10 @@ getargbool 0 rd.overlayfs && {
                 # Zero-size these files.
                 : > "$_"
             done
+            ln -sf ../../dracut/modules.d/70dmsquash-live/dracut-update-kernel-initramfs.service \
+                "$NEWROOT"/usr/lib/systemd/system/dracut-update-kernel-initramfs.service
+            ln -sf ../dracut-update-kernel-initramfs.service \
+                "$NEWROOT"/usr/lib/systemd/system/sysinit.target.wants/dracut-update-kernel-initramfs.service
         }
 
         mount --bind "$BOOTPATH/$IMG" "$BOOTPATH/initramfs-$bkver".img

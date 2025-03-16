@@ -738,6 +738,17 @@ parse_cfgArgs() {
                     esac
                 }
                 ;;
+            auto)
+                espStart=1
+                cfg=ovl
+                ;;
+            new_pt_for:*)
+                # New overlay partition for an existing live_dir:
+                base_dir="${1##*:}"
+                cfg=ovl:"${1%:*}"
+                # Trigger default ovlpath specification.
+                rd_live_overlay=''
+                ;;
             esp=*)
                 szESP=${1#esp=}
                 espStart=1

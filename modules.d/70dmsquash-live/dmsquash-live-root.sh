@@ -98,13 +98,19 @@ rd_overlay=$(get_rd_overlay) && {
     str_starts "$ovlpath" '/' || ovlpath=/"$ovlpath"
 }
 
-rd_live_image=$(getarg rd.live.image) && IFS=, parse_cfgArgs "$rd_live_image"
+rd_live_image=$(getarg rd.live.image) && {
+    IFS=, parse_cfgArgs "$rd_live_image"
+    [ "$p_Partition" ] && {
+        # Case where partition specification is used for disk specification.
+        get_diskDevice "$p_Partition"
+        unset -v 'p_Partition'
+    }
+}
+[ "$partitionTable" ] || get_partitionTable "$diskDevice"
 
 live_dir=$(getarg rd.live.dir) || live_dir=LiveOS
 [ "$live_dir" = PROMPT ] && prompt_for_livedir
 ln -sf "$live_dir" /run/initramfs/live_dir
-
-[ "$partitionTable" ] || get_partitionTable "$diskDevice"
 
 case "$livedev_fstype" in
     iso9660 | udf)

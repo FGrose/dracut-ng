@@ -1,0 +1,18 @@
+# /usr/lib/systemd/system/dracut-update-kernel-initramfs.service
+#  This file is part of dracut.
+[Unit]
+Description=Update kernel and initramfs when needed before shutdown.
+After=local-fs.target boot.mount boot.automount
+Wants=local-fs.target
+|ConditionPathIsSymbolicLink=/run/overlayfs
+ConditionPathExists=/dev/mapper/live-rw
+ConditionPathExists=!/dev/mapper/live-ro
+ConditionPathExists=!/dev/mapper/live-overlay-pool
+ConditionPathExists=!/run/initramfs/bin/sh
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/true
+ReadWritePaths=/boot
+ExecStop=/usr/lib/dracut/modules.d/70dmsquash-live/dmsquash-live-pre-shutdown.sh
