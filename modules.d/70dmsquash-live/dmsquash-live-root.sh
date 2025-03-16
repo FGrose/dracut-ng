@@ -45,7 +45,6 @@ LABEL=}"
 label="${label%%
 *}"
 printf '%s' "$uuid" > /run/initramfs/live_uuid
-
 load_fstype "$livedev_fstype"
 live_dir=$(getarg rd.live.dir) || live_dir=LiveOS
 roroot_image=$(getarg rd.live.rorootimg -d -y rd.live.squashimg) || roroot_image=squashfs.img
@@ -99,13 +98,19 @@ rd_live_check() {
     }
 }
 
-rd_live_image=$(getarg rd.live.image) && IFS=, parse_cfgArgs "$rd_live_image"
+rd_live_image=$(getarg rd.live.image) && {
+    IFS=, parse_cfgArgs "$rd_live_image"
+    [ "$p_Partition" ] && {
+        # Case where partition specification is used for disk specification.
+        get_diskDevice "$p_Partition"
+        unset -v 'p_Partition'
+    }
+}
+[ "$partitionTable" ] || get_partitionTable "$diskDevice"
 
 live_dir=$(getarg rd.live.dir) || live_dir=LiveOS
 [ "$live_dir" = PROMPT ] && prompt_for_livedir
 printf '%s' "$live_dir" > /run/initramfs/live_dir
-
-[ "$partitionTable" ] || get_partitionTable "$diskDevice"
 
 case "$livedev_fstype" in
     iso9660 | udf)
@@ -131,6 +136,17 @@ rd_live_overlay=$(getarg rd.live.overlay) && {
 if [ "$removePt$rd_live_overlay$cfg" ] && [ ! "$p_Partition" ]; then
     prep_Partition
 fi
+
+case "$cfg" in
+    ciso)
+        [ "$OverlayFS" ] || ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.live.overlay.overlayfs=${OverlayFS:=LiveOS_rootfs}"
+        set_FS_opts "$fsType" p_ptFlags
+        ovl_pt=$p_Partition
+        ovl_dir="$live_dir"
+        mount_p_Partition
+        install_Image
+        ;;
+esac
 
 # mount the backing of the live image
 mkdir -m 0755 -p /run/initramfs/live
