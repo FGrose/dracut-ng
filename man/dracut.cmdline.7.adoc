@@ -1379,7 +1379,7 @@ snapshot of the root filesystem or the OverlayFS mount will use an additional
 lower layer with the root filesystem.
 --
 
-**rd.live.image**[=__esp[=<sizeMiB>]__]::
+**rd.live.image**{[=__esp[=<sizeMiB>__]|[,{__<devspec>__|PROMPTDK}]}::
 This parameter without an argument supports the legacy syntax of passing just
 the base root filesystem partition *root=_<path to blockdevice>_* instead
 of *root=live:_<path to blockdevice>_*.
@@ -1393,6 +1393,7 @@ counterparts in the root filesystem /boot/ directory to facilitate programmatic
 updates.  The default *_<sizeMiB>_* is 512 MiB for disks smaller than 32 GiB
 and another 256 MiB is added to the default per 16 GiB of end-of-disk free
 space.
++
 NOTE: When a target disk is partitioned by a **rd.live.overlay=** directive,
 a new, default ESP will be created automatically and the esp parameter can be
 omitted.
@@ -1517,7 +1518,7 @@ By default, this is __squashfs.img__.
 Copy the complete image to RAM and use this for booting. This is useful
 when the image resides on, e.g., a DVD which needs to be ejected later on.
 
-**rd.live.overlay=**{[{__<sizeGiB>__|PROMPTSZ}[,{__<fstype>__|PROMPTFS}[,{new|new+p_pt}:__<live_dir>__[,recreate=[__<devspec>__][,__<devspec>__[:{__<pathspec>__|auto}[,ea=__<extra_attr__,__s>__]]]]]]|none}::
+**rd.live.overlay=**{[{__<sizeGiB>__|PROMPTSZ}[,{__<fstype>__|PROMPTFS}[,new:__<live_dir>__[,recreate=[__<devspec>__][,__<devspec>__[:{__<pathspec>__|auto}[,ciso[,ea=__<extra_attr__,__s>__]]]]]]]]|none}::
 Manage the usage of a persistent overlay.
 +
 --
