@@ -98,19 +98,12 @@ rd_live_check() {
     }
 }
 
-rd_live_image=$(getarg rd.live.image) && {
-    IFS=, parse_cfgArgs "$rd_live_image"
-    [ "$p_Partition" ] && {
-        # Case where partition specification is used for disk specification.
-        get_diskDevice "$p_Partition"
-        unset -v 'p_Partition'
-    }
-}
-[ "$partitionTable" ] || get_partitionTable "$diskDevice"
 
-live_dir=$(getarg rd.live.dir) || live_dir=LiveOS
-[ "$live_dir" = PROMPT ] && prompt_for_livedir
-printf '%s' "$live_dir" > /run/initramfs/live_dir
+if [ -h /run/initramfs/diskdev ]; then
+    get_diskDevice "$(readlink -f /run/initramfs/diskdev)"
+elif [ ! -f "$livedev" ]; then
+    get_diskDevice "$livedev"
+fi
 
 case "$livedev_fstype" in
     iso9660 | udf)
@@ -123,6 +116,18 @@ case "$livedev_fstype" in
         liverw=rw
         ;;
 esac
+
+rd_live_image=$(getarg rd.live.image) && {
+    IFS=, parse_cfgArgs "$rd_live_image"
+    [ "$p_Partition" ] && unset -v 'p_Partition'
+    #  Case where partition specification is used for disk specification.
+}
+
+live_dir=$(getarg rd.live.dir) || live_dir=LiveOS
+[ "$live_dir" = PROMPT ] && prompt_for_livedir
+printf '%s' "$live_dir" > /run/initramfs/live_dir
+
+[ "$partitionTable" ] || get_partitionTable "$diskDevice"
 
 rd_live_overlay=$(getarg rd.live.overlay) && {
     IFS=, parse_cfgArgs "$rd_live_overlay"
