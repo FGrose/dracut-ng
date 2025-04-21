@@ -680,13 +680,19 @@ parse_cfgArgs() {
                     esac
                 }
                 ;;
+            mklabel)
+                mklabel=gpt
+                ESP=$(aptPartitionName "$diskDevice" 1)
+                ln -sf "$ESP" /run/initramfs/espdev
+                espStart=1
+                ;;
             auto)
                 espStart=1
                 cfg=ovl
                 ;;
             iso | ciso)
                 cfg="$1"
-                isofile=$(readlink -f /run/initramfs/isofile)
+                [ -h /run/initramfs/isofile ] && isofile=$(readlink -f /run/initramfs/isofile)
                 ;;
             new_pt_for:*)
                 # New overlay partition for an existing live_dir:
