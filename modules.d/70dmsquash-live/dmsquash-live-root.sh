@@ -133,6 +133,17 @@ case "$livedev_fstype" in
         ;;
 esac
 
+[ "$partitionTable" ] || get_partitionTable "$diskDevice"
+
+rd_overlay=$(get_rd_overlay) && {
+    IFS=, parse_cfgArgs "$rd_overlay"
+
+    # Set default ovlpath, if not specified.
+    [ "$ovlpath" = auto ] && unset -v 'ovlpath'
+    : "${ovlpath:=/"$live_dir"/overlay-"$label"-"$uuid"}"
+    str_starts "$ovlpath" '/' || ovlpath=/"$ovlpath"
+}
+
 if [ "$removePt$rd_overlay$cfg" ] && [ ! "$p_Partition" ]; then
     prep_Partition
 fi
