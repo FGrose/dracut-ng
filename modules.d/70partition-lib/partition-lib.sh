@@ -738,13 +738,19 @@ parse_cfgArgs() {
                     esac
                 }
                 ;;
+            mklabel)
+                mklabel=gpt
+                ESP=$(aptPartitionName "$diskDevice" 1)
+                ln -sf "$ESP" /run/initramfs/espdev
+                espStart=1
+                ;;
             auto)
                 espStart=1
                 cfg=ovl
                 ;;
             iso | ciso)
                 cfg="$1"
-                isofile=$(readlink -f /run/initramfs/isofile)
+                [ -h /run/initramfs/isofile ] && isofile=$(readlink -f /run/initramfs/isofile)
                 ;;
             new_pt_for:*)
                 # New overlay partition for an existing live_dir:
@@ -872,6 +878,14 @@ prep_Partition() {
     }
 
     [ "$espStart" ] && {
+        [ "$cfg" = iso ] && [ "$mklabel" ] && {
+            # dd'd .iso -> loaded .iso on reformatted disc.
+            mkdir -p /run/initramfs/iso
+            isofile=/run/initramfs/iso/${label}.iso
+            src="$diskDevice" dst="$isofile" sz="$n" dd_copy
+            ln -s "$isofile" /run/initramfs/isofile
+        }
+
         # Format ESP.
         espStart=${2%B}
         freeSpaceStart=$((espStart + (${szESP:=$(get_sz_forESP)} << 20) + 1))
