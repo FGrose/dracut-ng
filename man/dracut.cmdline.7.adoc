@@ -1435,7 +1435,7 @@ snapshot of the root filesystem or the OverlayFS mount will use an additional
 lower layer with the root filesystem.
 --
 
-**rd.live.image**[=__esp[=<sizeMiB>__]]::
+**rd.live.image**{[=__esp[=<sizeMiB>__]|[,{__<devspec>__|PROMPTDK}[,mklabel]]}::
 This parameter without an argument supports the legacy syntax of passing just
 the base root filesystem partition *root=_<device specification>_* instead
 of *root=live:_<device specification>_*.
@@ -1456,6 +1456,21 @@ omitted.
 +
 This feature facilitates updating the image kernel version and installing
 multiple boot images or alternative initrd images on the boot device.
+* *_<devspec>_* specifies the path to a device with a mountable filesystem and
+is used to designate the target disk when a new installation is desired on an
+arbitrary disk.
+*_<devspec>_* may be in the form of
++
+{`serial=<devserial>/serial/[<partspec>]|UUID=?*|PARTUUID=?*|LABEL=?*|PARTLABEL=?*|/dev/?*`}
++
+serial=_<devserial>_/serial/[_<partspec>_] specifies the ID_SERIAL_SHORT
+property value for the target disk device followed by `/serial/` and optional
+_<partspec>_, where _<partspec>_ is a numeric only partition number or one of
+the other _<devspec>_ specifications.
+* *PROMPTDK* triggers an interactive menu for selecting the target disk where a
+new persistence partition will be created.
+* *mklabel* causes the specified disk to be totally repartitioned with a new
+GUID Partition Table (GPT).
 
 Uncompressed live filesystem image::
 When the live system was installed with the '--skipcompress' option of the
@@ -1561,7 +1576,7 @@ directory name for a new OverlayFS directory.
 
 **rd.live.rorootimg=**__<filename of SquashFS or EROFS image>__::
 Specifies the filename for a read-only image of the root filesystem.
-By default, this is __squashfs.img__.
+By default, this is _squashfs.img_.
 
 **rd.live.squashimg=**__<filename of SquashFS or EROFS image>__::
 Specifies the filename for a SquashFS or EROFS image of the root filesystem.
@@ -1610,8 +1625,9 @@ be preferred for greater endurance on common flash storage devices.
 * *PROMPTFS* may be entered to invoke a menu to select the filesystem type.
 +
 NOTE: In an *_iso-scan/filename_* boot, if any of the above arguments are
-supplied without a *_<devspec>_* argument, a comma—`,`—should precede or follow
-all these arguments to indicate that *_<devspec>_* is specified elsewhere.
+supplied without a *_<devspec>_* argument (such as in a mklabel boot), a comma—
+`,`—should precede or follow all these arguments to indicate that *_<devspec>_*
+is specified elsewhere.
 +
 * *_new_pt_for:<live_dir>_* specifies that a new persistent OverlayFS directory
 will be created for the existing installation specified by *_<live_dir>_*.  The

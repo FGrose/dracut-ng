@@ -678,13 +678,19 @@ parse_cfgArgs() {
                     esac
                 }
                 ;;
+            mklabel)
+                mklabel=gpt
+                ESP=$(aptPartitionName "$diskDevice" 1)
+                ln -sf "$ESP" /run/initramfs/espdev
+                espStart=1
+                ;;
             auto)
                 espStart=1
                 cfg=ovl
                 ;;
             iso | ciso)
                 cfg="$1"
-                isofile=$(readlink -f /run/initramfs/isofile)
+                [ -h /run/initramfs/isofile ] && isofile=$(readlink -f /run/initramfs/isofile)
                 ;;
             esp=*)
                 szESP=${1#esp=}
@@ -817,7 +823,14 @@ prep_Partition() {
     optimize "$partitionStart" partitionStart
 
     [ "$espStart" ] && {
-        espCmd="${espCmd:+rm "${espNbr:=1}"} --align optimal mkpart ESP fat32 ${espStart}B $((partitionStart - 1))B \
+        if [ "$mklabel" ]; then
+            espNbr=1
+            unset -v 'removePtNbr'
+            wipefs --lock -af${QUIET:+q} "$diskDevice"
+        else
+            espCmd="rm ${espNbr:=1}"
+        fi
+        espCmd="${espCmd:+rm "$espNbr"} --align optimal mkpart ESP fat32 ${espStart}B $((partitionStart - 1))B \
             type $espNbr c12a7328-f81f-11d2-ba4b-00a0c93ec93b"
     }
 
