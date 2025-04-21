@@ -894,13 +894,19 @@ parse_cfgArgs() {
                     esac
                 }
                 ;;
+            mklabel)
+                mklabel=gpt
+                ESP=$(aptPartitionName "$diskDevice" 1)
+                ln -sf "$ESP" /run/initramfs/espdev
+                espStart=1
+                ;;
             auto)
                 espStart=1
                 cfg=ovl
                 ;;
             iso | ciso)
                 cfg="$1"
-                isofile=$(readlink -f /run/initramfs/isofile)
+                [ -h /run/initramfs/isofile ] && isofile=$(readlink -f /run/initramfs/isofile)
                 ;;
             esp=*)
                 szESP=${1#esp=}
@@ -1045,10 +1051,17 @@ prep_Partition() {
     optimize "$partitionStart" partitionStart
 
     [ "$espStart" ] && {
-        get_ESP "$diskDevice"
-        espCmd="rm $espNbr \
-            set 1 hidden off \
-            --align optimal mkpart ESP fat32 ${espStart}B ${espEnd:=$((partitionStart - 1))}B \
+        if [ "$mklabel" ]; then
+            espNbr=1
+            ESP=$(aptPartitionName "$diskDevice" 1)
+            ln -sf "$ESP" /run/initramfs/espdev
+            unset -v 'removePtNbr'
+            wipefs --lock -af${QUIET:+q} "$diskDevice"
+        else
+            espCmd="rm ${espNbr:=1} set 1 hidden off"
+        fi
+        espCmd="${espCmd:+$espCmd} \
+            --align optimal mkpart ESP fat32 ${espStart}B $((partitionStart - 1))B \
             type $espNbr c12a7328-f81f-11d2-ba4b-00a0c93ec93b \
             set $espNbr hidden on"
     }
@@ -1060,17 +1073,18 @@ prep_Partition() {
     fi
     sizeGiB=${sizeGiB:+$((sizeGiB << 30))}
     partitionEnd="$((partitionStart + ${sizeGiB:-$szDisk} - 512))"
+    optimize "$partitionEnd" partitionEnd
     [ "$partitionEnd" -gt "$freeSpaceEnd" ] && partitionEnd="$freeSpaceEnd"
-    newptCmd="--align optimal mkpart ${ovl_dir}.. ${partitionStart}B ${partitionEnd}B"
 
     # LiveOS persistence partition type
     p_ptType=ccea7cb3-70ba-4c31-8455-b906e46a00e2
 
+    newptCmd="--align optimal mkpart ${ovl_dir}.. ${partitionStart}B ${partitionEnd}B"
+    [ "$mklabel" ] && newptCmd="$newptCmd type ${newptNbr:=3} $newptType set 3 no_automount on"
+
     # shellcheck disable=SC2086
-    run_parted "${diskDevice}" \
-        ${removePtNbr:+rm "$removePtNbr"} \
-        ${espCmd:+$espCmd} \
-        ${newptCmd}
+    run_parted ${diskDevice} ${mklabel:+mklabel $mklabel} ${removePtNbr:+rm $removePtNbr} \
+        ${espCmd:+$espCmd} ${roptCmd:+$roptCmd} ${newptCmd}
     : "${cfg:=ovl}"
 
     [ "$espCmd" ] && {
