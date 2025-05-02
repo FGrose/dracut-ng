@@ -7,7 +7,7 @@ case "$OverlayFS" in
     0 | no | off) return 0 ;;
 esac
 
-ismounted "$OverlayFS" || {
+findmnt "$OverlayFS" > /dev/null 2>&1 || {
     getargbool 0 rd.overlayfs.readonly && readonly_overlay="--readonly"
 
     basedirs=lowerdir=${readonly_overlay:+/run/overlayfs-r:}/run/rootfsbase

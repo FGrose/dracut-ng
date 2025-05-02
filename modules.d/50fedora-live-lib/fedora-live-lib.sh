@@ -139,6 +139,11 @@ s/\s+(quiet|rhgb|splash)\s+(quiet|rhgb|splash)\s+/ /
             label="${label##*/}"
             rootcfg="/dev/loop0p1 iso-scan/filename=PARTUUID=$(findmnt -nro PARTUUID /run/initramfs/isoscandev):isos/${label}"
             ;;           
+        ropt | '')
+            read -r root_puuid < /run/initramfs/live_partuuid
+            rootcfg=PARTUUID=$root_puuid
+            root_arg=$rootcfg
+            ;;
     esac
     cfgargs="rd.live.overlay.overlayfs=LiveOS_rootfs${ROOTFLAGS:+ rootflags=$ROOTFLAGS}"
     cfgargs="$(escape "$cfgargs")"
@@ -224,8 +229,7 @@ search --no-floppy --efidisk-only --set esp -u ${esp_uuid}
 s/rd\.live\.overlay=\S*/rd\.live\.overlay=PARTUUID=$PARTUUID ${ROOTFLAGS:+rootflags=$ROOTFLAGS }/
 s;(new:.*|serial=.*/)\S*;\1 rd\.live\.overlay=PARTUUID=$PARTUUID ${ROOTFLAGS:+rootflags=$ROOTFLAGS };
 }" "$GRUB_cfg"
-            ;;
-    esac
+    }
     [ -e "$GRUB_cfg".set ] || set_flag
 }
 
