@@ -97,7 +97,8 @@ s/\s+(quiet|rhgb|splash)\s+(quiet|rhgb|splash)\s+/ /
     ovl_spec="$(escape "$ovl_spec")"
 
     # Update menu entries for the new installation.
-    rootcfg=UUID=$UUID
+    read -r UUID > /dev/null 2>&1 < /run/initramfs/ESP/"$ovl_dir"/rorootfs.img && rootcfg=PART
+    rootcfg="${rootcfg:+PART}UUID=${UUID##*/}"
 
     cfgargs="${ROOTFLAGS:+ rootflags=$ROOTFLAGS}"
     cfgargs="$(escape "$cfgargs")"

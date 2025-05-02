@@ -115,7 +115,7 @@ JobRunningTimeoutSec=3000" > "$GENERATOR_DIR/$_OverlayFS".device.d/timeout.conf
 
 get_ovlpath() {
     [ -b /run/initramfs/p_pt ] && {
-        ovlpath="$(readlink /run/initramfs/ovlpath)"
+        read -r ovlpath < /run/initramfs/ovlpath
         [ "$ovlpath" = auto ] && unset -v 'ovlpath'
         : "${ovlpath:=/"$ovl_dir"/overlay-"$label"-"$uuid"}"
         str_starts "$ovlpath" '/' || ovlpath=/"$ovlpath"
