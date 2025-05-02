@@ -501,6 +501,9 @@ parse_cfgArgs() {
                 ln -sf "$ESP" /run/initramfs/espdev
                 espStart=1
                 ;;
+            ropt)
+                cfg="$1"
+                ;;
             auto)
                 espStart=1
                 cfg=ovl
@@ -509,7 +512,7 @@ parse_cfgArgs() {
                 cfg="$1"
                 [ -h /run/initramfs/isofile ] && isofile=$(readlink -f /run/initramfs/isofile)
                 ;;
-            new:* | new+p_pt:*)
+            new:*)
                 # New overlay based on existing live_dir:
                 base_dir="${1##*:}"
                 cfg=ovl:"${1%:*}"
@@ -631,14 +634,6 @@ prep_Partition() {
     esac
 
     [ "$espStart" ] && {
-        [ "$cfg" = iso ] && [ "$mklabel" ] && {
-            # dd'd .iso -> loaded .iso on reformatted disc.
-            mkdir -p /run/initramfs/iso
-            isofile=/run/initramfs/iso/${label}.iso
-            src="$diskDevice" dst="$isofile" sz="$n" dd_copy
-            ln -s "$isofile" /run/initramfs/isofile
-        }
-
         # Format ESP.
         espStart=${2%B}
         freeSpaceStart=$((espStart + (${szESP:=$(get_sz_forESP)} << 20) + 1))
@@ -674,7 +669,7 @@ prep_Partition() {
                 loopdev=$(readlink -f /run/initramfs/isoloop)
             fi
             mount -n -m -r -t iso9660 "$loopdev"p1 /run/initramfs/live
-            sz=$(blkid --probe --match-tag FSSIZE --output value --usages filesystem -- /run/initramfs/live/LiveOS/"$squash_image")
+            sz=$(blkid --probe --match-tag FSSIZE --output value --usages filesystem -- /run/initramfs/live/LiveOS/"$roroot_image")
 
             umount -d /run/initramfs/live
             losetup -d "$loopdev"
@@ -802,33 +797,6 @@ install_Image() {
             mount --bind "$mntDir/$live_dir" /run/initramfs/live
             ln -sf "$p_Partition" /run/initramfs/livedev
             rm -- /run/initramfs/isoloop /run/initramfs/isofile /run/initramfs/isoscandev
-            ;;
-    esac
-    [ -d /run/initramfs/iso ] && {
-        # Recover tmpfs storage space.
-        rm -rf -- /run/initramfs/iso
-    }
-}
-
-install_Image() {
-    local src dst loopdev
-    case "$cfg" in
-        ciso)
-            mkdir -p "$mntDir"/isos
-            isofile="$mntDir/isos/${isofile##*/}"
-            src=/run/initramfs/isofile dst="$isofile" msg='to disk...' dd_copy
-            [ -h /run/initramfs/isoloop ] && {
-                losetup -d /run/initramfs/isoloop
-                umount /run/initramfs/isoscan > /dev/null 2>&1
-            }
-            ln -sf "$p_Partition" /run/initramfs/isoscandev
-            [ "${DRACUT_SYSTEMD-}" ] && mount --make-rprivate /run
-            loopdev=$(losetup -P -r -f --show "$isofile")
-            ln -sf "$loopdev" /run/initramfs/isoloop
-            livedev="${loopdev}p1"
-            ln -sf "$livedev" /run/initramfs/livedev
-            srcdir=LiveOS
-            ln -sf "$isofile" /run/initramfs/isofile
             ;;
     esac
     [ -d /run/initramfs/iso ] && {
