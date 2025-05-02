@@ -51,7 +51,7 @@ do_overlayfs() {
         ovlpath=/"${ovlpath}"
     fi
 
-    if [ "$ovl_pt" ] && [ "$ovlpath" ]; then
+    if [ "$ovlpath" ]; then
         mkdir -m 0755 -p "${mntDir:=/run/initramfs/LiveOS_persist}"
         # shellcheck disable=SC2046
         set -- $(findmnt -d backward -fnro TARGET "$ovl_pt")
