@@ -144,6 +144,11 @@ s/\s+(quiet|rhgb|splash)\s+(quiet|rhgb|splash)\s+/ /
             label="${label##*/}"
             rootcfg="/dev/loop0p1 iso-scan/filename=UUID=$(findmnt -nro UUID /run/initramfs/isoscandev):isos/${label}"
             ;;           
+        ropt | '')
+            # SquashFS lacks UUID, use the disk partition's PARTUUID.
+            rootcfg=PARTUUID=$(readlink /run/initramfs/live_partuuid)
+            root_arg=$rootcfg
+            ;;
     esac
     cfgargs="${ROOTFLAGS:+ rootflags=$ROOTFLAGS}"
     cfgargs="$(escape "$cfgargs")"

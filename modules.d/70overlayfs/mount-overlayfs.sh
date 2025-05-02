@@ -18,7 +18,7 @@ findmnt "${ovlfs_name:=os_rootfs}" > /dev/null 2>&1 || {
     [ -h /run/overlayfs ] && getargbool 0 rd.overlay.readonly \
         && readonly_overlay=--readonly
 
-    basedirs=lowerdir=${readonly_overlay:+/run/overlayfs-r:}/run/rootfsbase
+    basedirs=lowerdir="${readonly_overlay:+/run/overlayfs-r:}"/run/rootfsbase
 
     mount -t overlay "$ovlfs_name" \
         -o "$basedirs",upperdir=/run/overlayfs,workdir=/run/ovlwork "$NEWROOT"

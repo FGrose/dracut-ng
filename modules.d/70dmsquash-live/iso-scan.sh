@@ -23,7 +23,10 @@ rd_live_overlay=$(getarg rd.live.overlay) && {
     p_pt=${rd_live_overlay%%,*}
     p_pt=${p_pt##*,}
     p_pt=${p_pt%:*}
-    [ "$p_pt" ] && p_pt=$(label_uuid_to_dev "$p_pt")
+    [ "$p_pt" ] && {
+        p_pt=$(label_uuid_to_dev "$p_pt")
+        get_diskDevice "$p_pt"
+    }
 }
 
 setup_isoloop() {
