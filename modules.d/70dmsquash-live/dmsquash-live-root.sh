@@ -6,7 +6,7 @@ command -v getarg > /dev/null || . /lib/dracut-lib.sh
 command -v det_fs > /dev/null || . /lib/fs-lib.sh
 command -v unpack_archive > /dev/null || . /lib/img-lib.sh
 command -v do_overlayfs > /dev/null || . /lib/overlayfs-lib.sh
-. /lib/partition-lib.sh
+command -v get_diskDevice > /dev/null || . /lib/partition-lib.sh
 
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
@@ -122,7 +122,7 @@ rd_overlay=$(get_rd_overlay) && {
     str_starts "$ovlpath" '/' || ovlpath=/"$ovlpath"
 }
 
-if [ "$removePt$rd_overlay$cfg" ] && [ ! "$p_Partition" ]; then
+if [ "$removePt$rd_overlay$cfg" ]; then
     prep_Partition
 fi
 
@@ -134,6 +134,11 @@ case "$cfg" in
         ovl_dir="$live_dir"
         mount_partition
         install_Image
+        ;;
+    ropt)
+        loopdev=$(losetup -f)
+        losetup -rP "$loopdev" /run/initramfs/isofile
+        livedev="${loopdev}p1"
         ;;
 esac
 
@@ -154,7 +159,7 @@ case "$livedev_fstype" in
         ;;
     squashfs | erofs)
         # no mount needed - we've already got the LiveOS image in $livedev
-        ROROOTFS=$livedev
+        FSIMG=$livedev
         ;;
     ntfs)
         [ -x /sbin/mount-ntfs-3g ] && mntcmd=/sbin/mount-ntfs-3g
@@ -304,10 +309,10 @@ do_live_overlay() {
     # set up the snapshot
     [ "$OverlayFS" ] || {
         if [ "$readonly_overlay" ] && [ "$OVERLAY_LOOPDEV" ]; then
-            echo 0 "$sz" snapshot "$BASE_LOOPDEV" "$OVERLAY_LOOPDEV" P 8 | dmsetup create --readonly live-ro
+            echo 0 "$sz" snapshot "$loopdev" "$OVERLAY_LOOPDEV" P 8 | dmsetup create --readonly live-ro
             base=/dev/mapper/live-ro
         else
-            base=$BASE_LOOPDEV
+            base=$loopdev
         fi
         if [ "$thin_snapshot" ]; then
             modprobe dm_thin_pool
@@ -336,14 +341,14 @@ do_live_overlay() {
             echo 0 "$sz" snapshot "$base" "$over" PO 8 | dmsetup create live-rw
         fi
         # Create a device for the ro base of dm overlaid file systems.
-        echo 0 "$sz" linear "$BASE_LOOPDEV" 0 | dmsetup create --readonly live-base
+        echo 0 "$sz" linear "$loopdev" 0 | dmsetup create --readonly live-base
     }
 
-    ln -s "$BASE_LOOPDEV" /dev/live-base
+    ln -s "$loopdev" /dev/live-base
 }
 # end do_live_overlay()
 
-# we might have an embedded fs image on squashfs (compressed live)
+# we might have an embedded fs image on SquashFS or EROFS (compressed live)
 #   Source may be a mounted .iso image, an installed LiveUSB, or a link to an image partition.
 for FSIMG in "$roroot_image" rorootfs.img rootfs.img ext3fs.img rootfs.tgz; do
     FSIMG=/run/initramfs/live/"$srcdir/$FSIMG"
@@ -358,11 +363,12 @@ for FSIMG in "$roroot_image" rorootfs.img rootfs.img ext3fs.img rootfs.tgz; do
 done
 if [ -e "$FSIMG" ]; then
     [ "$live_ram" ] && src="$FSIMG" dst=/run/initramfs/rootfs.img var=FSIMG dd_copy
-    BASE_LOOPDEV=$(losetup -f)
     [ "$fsType" = unknown ] || {
-        losetup -r "$BASE_LOOPDEV" "$FSIMG"
-        mkdir -m 0755 -p /run/initramfs/rorootfs
-        mount -n -t "$fsType" -o ro "$BASE_LOOPDEV" /run/initramfs/rorootfs
+        [ -b "$FSIMG" ] || {
+            loopdev=$(losetup -f)
+            losetup -r "$loopdev" "$FSIMG"
+        }
+        mount --mkdir=0755 -n -o ro "$loopdev" /run/initramfs/rorootfs
 
         if [ -d /run/initramfs/rorootfs/LiveOS ]; then
             if [ -f /run/initramfs/rorootfs/LiveOS/rootfs.img ]; then
@@ -373,22 +379,30 @@ if [ -e "$FSIMG" ]; then
             fi
         elif [ -d /run/initramfs/rorootfs/usr ] || [ -d /run/initramfs/rorootfs/ostree ]; then
             # If needed, adjust OverlayFS,
-            # or die if OverlayFS is required but unavailable.
+            # or Die if OverlayFS is required but unavailable.
             if [ -d /sys/module/overlay ]; then
                 [ "$OverlayFS" ] || {
                     OverlayFS=LiveOS_rootfs
                     ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.overlay=LiveOS_rootfs"
                 }
             else
-                die 'OverlayFS is required but unavailable.'
+                Die 'OverlayFS is required but unavailable.'
                 exit 1
             fi
         else
-            die "Failed to find a root filesystem in $FSIMG."
+            Die "Failed to find a root filesystem in $FSIMG."
             exit 1
         fi
     }
 fi
+
+case "$cfg" in
+    ropt)
+        install_Image
+        mount -m -n -o ro "$FSIMG" /run/initramfs/rorootfs
+        ;;
+esac
+
 if [ "$FSIMG" ]; then
     if [ "$writable_fsimg" ]; then
         # mount the provided filesystem read/write
@@ -412,18 +426,25 @@ if [ "$FSIMG" ]; then
             setup=setup
         fi
     fi
-    [ -e "$BASE_LOOPDEV" ] || {
-        BASE_LOOPDEV=$(losetup -f)
-        losetup ${readonly_base:+-r} "$BASE_LOOPDEV" "$FSIMG"
-        sz=$(cat /sys/class/block/"${BASE_LOOPDEV##*/}"/size)
+    [ -e "$loopdev" ] || {
+        loopdev=$(losetup -f)
+        losetup ${readonly_base:+-r} "$loopdev" "$FSIMG"
     }
+    [ "$OverlayFS" ] || sz=$(cat /sys/class/block/"${loopdev##*/}"/size)
     if [ "$setup" = rw ]; then
-        echo 0 "$sz" linear "$BASE_LOOPDEV" 0 | dmsetup create live-rw
+        echo 0 "$sz" linear "$loopdev" 0 | dmsetup create live-rw
     else
-        # Add a DM snapshot for writes or begin setup of OverlayFS.
+        # Prepare for mounting the overlay.
         do_live_overlay
     fi
 fi
+
+case "$cfg" in
+    ropt)
+        cfg=ropt_2
+        install_Image
+        ;;
+esac
 
 if [ "$OverlayFS" ]; then
     if [ "$FSIMG" ]; then
@@ -432,20 +453,18 @@ if [ "$OverlayFS" ]; then
         mount_unit=/run/systemd/generator.early/run-rootfsbase.mount
         [ -f "$mount_unit" ] && echo "Type=$fsType" >> "$mount_unit"
         if [ "${DRACUT_SYSTEMD-}" ]; then
-            ln -s "$FSIMG" /run/initramfs/rorootdev
+            ln -s "$FSIMG" /run/initramfs/rorootfs
             systemctl start run-rootfsbase.mount
         else
             srcPartition="$FSIMG" fstype="$fsType" srcflags=,ro \
                 mountPoint=/run/rootfsbase override=override \
                 . "$hookdir"/mount/99-mount-root.sh
         fi
-        # Reuse variable to hold OverlayFS mount source name.
-        rd_overlay=LiveOS_rootfs
     else
         [ -d /sys/module/overlay ] || Die 'OverlayFS is required but unavailable.'
         # Support legacy case of OverlayFS over traditional root block device.
         ln -sf /run/initramfs/live /run/rootfsbase
-        rd_overlay=os_rootfs
+        [ "$OverlayFS" = 1 ] && OverlayFS=os_rootfs
     fi
     ovl_pt=$p_Partition
     ovl_dir="$live_dir"
