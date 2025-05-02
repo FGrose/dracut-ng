@@ -142,6 +142,11 @@ s/\s+(quiet|rhgb|splash)\s+(quiet|rhgb|splash)\s+/ /
             label="${label##*/}"
             rootcfg="/dev/loop0p1 iso-scan/filename=UUID=$(findmnt -nro UUID /run/initramfs/isoscandev):isos/${label}"
             ;;           
+        ropt | '')
+            # SquashFS lacks UUID, use the disk partition's PARTUUID.
+            rootcfg=PARTUUID=$(readlink /run/initramfs/live_partuuid)
+            root_arg=$rootcfg
+            ;;
     esac
     cfgargs="rd.live.overlay.overlayfs=LiveOS_rootfs${ROOTFLAGS:+ rootflags=$ROOTFLAGS}"
     cfgargs="$(escape "$cfgargs")"
@@ -227,8 +232,7 @@ search --no-floppy --efidisk-only --set esp -u ${esp_uuid}
 s/rd\.live\.overlay=\S*/rd\.live\.overlay=UUID=$UUID ${ROOTFLAGS:+rootflags=$ROOTFLAGS }/
 s;(new:.*|serial=.*/)\S*;\1 rd\.live\.overlay=UUID=$UUID ${ROOTFLAGS:+rootflags=$ROOTFLAGS };
 }" "$GRUB_cfg"
-            ;;
-    esac
+    }
     [ -e "$GRUB_cfg".set ] || set_flag
 }
 
