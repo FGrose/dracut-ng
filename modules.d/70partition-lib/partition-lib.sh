@@ -527,6 +527,7 @@ prompt_for_path() {
         obj="${obj%%[\`\'|
 ]*}"
     }
+}
 
 # Prompt for Live directory name
 prompt_for_livedir() {
@@ -900,6 +901,9 @@ parse_cfgArgs() {
                 ln -sf "$ESP" /run/initramfs/espdev
                 espStart=1
                 ;;
+            ropt)
+                cfg="$1"
+                ;;
             auto)
                 espStart=1
                 cfg=ovl
@@ -950,7 +954,10 @@ parse_cfgArgs() {
                 case "$1" in
                     *=?*)
                         ovl_pt="$(label_uuid_to_dev "${1%%:*}")"
-                        strstr "$1" ":" && ovlpath=${1##*:}
+                         strstr "$1" ":" && {
+                             ovlpath=${1##*:}
+                            echo "$ovlpath" > /run/initramfs/ovlpath
+                         }
                         ;;
                     *) OverlayFS="$1" ;;
                 esac
@@ -966,18 +973,19 @@ parse_cfgArgs() {
 
 prep_Partition() {
     local removePtNbr freeSpaceStart freeSpaceEnd byteMax
-    if [ "$p_pt" ]; then
-        if ! [ -b "$p_pt" ]; then
-            Die "The specified persistence partition, $p_pt, is not recognized."
-        else
-            info "Skipping overlay creation: a persistence partition already exists."
-            unset -v 'cfg'
-            return 0
+    [ "$cfg" ] || {
+        if [ "$p_pt" ]; then
+            if ! [ -b "$p_pt" ]; then
+                Die "The specified persistence partition, $p_pt, is not recognized."
+            else
+                info "Skipping overlay creation: a persistence partition already exists."
+                return 0
+            fi
+        elif [ ! "$rd_overlay" ]; then
+            info "Skipping overlay creation: kernel command line parameter 'rd.overlay' is not set."
+            return 1
         fi
-    elif [ ! "$rd_overlay" ]; then
-        info "Skipping overlay creation: kernel command line parameter 'rd.overlay' is not set."
-        return 1
-    fi
+    }
     freeSpaceEnd=$((szDisk - 1048576))
     [ "$removePt" ] && {
         [ "${removePt#"$diskDevice"}" = "$removePt" ] && {
@@ -1039,6 +1047,18 @@ prep_Partition() {
         eval "$2"=$((($1 + optimalIO - 1) / optimalIO * optimalIO))
     }
 
+    case "$cfg" in
+        iso | ropt)
+            [ "$mklabel" ] && {
+                # dd'd .iso -> loaded .iso or ropt on reformatted disc.
+                mkdir -p /run/initramfs/iso
+                isofile=/run/initramfs/iso/${label}.iso
+                src="$diskDevice" dst="$isofile" sz="$sz" dd_copy
+                ln -sf "$isofile" /run/initramfs/isofile
+            }
+            ;;
+    esac
+
     [ "$espStart" ] && {
         # Format ESP.
         espStart=${2%B}
@@ -1066,25 +1086,54 @@ prep_Partition() {
             set $espNbr hidden on"
     }
 
+    case "$cfg" in
+        ropt)
+            if [ -d /run/initramfs/iso ]; then
+                loopdev=$(losetup -f)
+                losetup -r "$loopdev" /run/initramfs/isofile
+            else
+                loopdev=$(readlink -f /run/initramfs/isoloop)
+            fi
+            mount -n -m -r -t iso9660 "$loopdev" /run/initramfs/live
+            sz=$(stat -c %s -- /run/initramfs/live/LiveOS/"$roroot_image")
+            umount -d /run/initramfs/live
+
+            roptStart=$partitionStart
+            partitionStart=$((roptStart + sz + 1))
+            optimize "$partitionStart" partitionStart
+
+            # LiveOS readonly root partition type
+            roptType=eb946813-7e3a-4ec3-9a3a-19c53d454f9f
+
+            roptCmd="--align optimal mkpart $ovl_dir ${roptStart}B $((partitionStart - 1))B \
+                ${mklabel:+type 2 $roptType set 2 no_automount on}"
+            [ "$mklabel" ] && ro_Partition=$(aptPartitionName "$diskDevice" 2)
+            ;;
+    esac
+
     if [ "$partitionStart" -gt "$byteMax" ]; then
         # Allow at least 256 MiB for persistence partition.
         warn "Skipping partition creation: less than 256 MiB of space is available."
         return 1
     fi
-    sizeGiB=${sizeGiB:+$((sizeGiB << 30))}
-    partitionEnd="$((partitionStart + ${sizeGiB:-$szDisk} - 512))"
-    optimize "$partitionEnd" partitionEnd
-    [ "$partitionEnd" -gt "$freeSpaceEnd" ] && partitionEnd="$freeSpaceEnd"
+    
+    [ "$ovl_pt" ] && {
+        sizeGiB=${sizeGiB:+$((sizeGiB << 30))}
+        partitionEnd="$((partitionStart + ${sizeGiB:-$szDisk} - 512))"
+        optimize "$partitionEnd" partitionEnd
+        [ "$partitionEnd" -gt "$freeSpaceEnd" ] && partitionEnd="$freeSpaceEnd"
 
-    # LiveOS persistence partition type
-    p_ptType=ccea7cb3-70ba-4c31-8455-b906e46a00e2
+        # LiveOS persistence partition type
+        p_ptType=ccea7cb3-70ba-4c31-8455-b906e46a00e2
 
-    newptCmd="--align optimal mkpart ${ovl_dir}.. ${partitionStart}B ${partitionEnd}B"
-    [ "$mklabel" ] && newptCmd="$newptCmd type ${newptNbr:=3} $newptType set 3 no_automount on"
+        newptCmd="--align optimal mkpart ${ovl_dir}.. ${partitionStart}B ${partitionEnd}B \
+            ${mklabel:+type ${newptNbr:=3} $p_ptType set 3 no_automount on}"
+        [ "$mklabel" ] && p_Partition=$(aptPartitionName "$diskDevice" 3)
+    }
 
     # shellcheck disable=SC2086
     run_parted ${diskDevice} ${mklabel:+mklabel $mklabel} ${removePtNbr:+rm $removePtNbr} \
-        ${espCmd:+$espCmd} ${roptCmd:+$roptCmd} ${newptCmd}
+        ${espCmd:+$espCmd} ${roptCmd:+$roptCmd} ${newptCmd:+$newptCmd}
     : "${cfg:=ovl}"
 
     [ "$espCmd" ] && {
@@ -1100,17 +1149,26 @@ prep_Partition() {
         run_parted "$diskDevice" type "$newptNbr" "$newptType" \
             set "$newptNbr" no_automount on
     }
-    # shellcheck disable=SC2086
-    newptType="$p_ptType" set_pt_type $newptCmd
+    [ "$roptStart" ] && {
+        [ "$mklabel" ] || {
+            newptType="$roptType" set_pt_type $roptCmd
+            ro_Partition=$(aptPartitionName "$diskDevice" "$newptNbr")
+        }
+    }
 
     [ "$p_Partition" ] || {
-        p_Partition=$(aptPartitionName "$diskDevice" "$newptNbr")
+        [ "$mklabel" ] || {
+            newptType="$p_ptType" set_pt_type $newptCmd
+            p_Partition=$(aptPartitionName "$diskDevice" "$newptNbr")
+        }
+    }
 
+    [ "$ovl_pt" ] && {
         udevadm trigger --name-match "$p_Partition" --action add --settle > /dev/kmsg 2>&1
         ln -sf "$p_Partition" /run/initramfs/p_pt
 
         [ "${p_ptFlags+set}" ] || set_FS_options "${p_ptfsType:-ext4}" p_ptFlags
-        mkfs_config "${p_ptfsType:=ext4}" LiveOS_persist $((partitionEnd - partitionStart + 1)) "${extra_attrs}"
+        mkfs_config "${p_ptfsType:=ext4}" "${OverlayFS%_rootfs}"_persist $((partitionEnd - partitionStart + 1)) "${extra_attrs}"
         wipefs --lock -af${QUIET:+q} "$p_Partition"
         create_Filesystem "$p_ptfsType" "$p_Partition"
     }
@@ -1137,6 +1195,43 @@ install_Image() {
             ln -sf "$livedev" /run/initramfs/livedev
             srcdir=LiveOS
             ln -sf "$isofile" /run/initramfs/isofile
+            ;;
+        ropt)
+            src=$FSIMG dst=$ro_Partition msg='to disk...' dd_copy
+            losetup -d "$FSIMG"
+            FSIMG=$ro_Partition
+
+            if [ "$base_dir" ]; then
+                roPARTUUID=$(readlink /run/initramfs/live/"${base_dir}"/rorootfs.img)
+                roPARTUUID=${roPARTUUID##*/}
+            else
+                roPARTUUID=$(blkid "$ro_Partition")
+                roPARTUUID="${roPARTUUID#*PARTUUID=\"}"
+                roPARTUUID="${roPARTUUID%%\"*}"
+            fi
+            # Save path to rorootfs base partition.
+            echo /dev/disk/by-partuuid/"$roPARTUUID" > /run/initramfs/ESP/"$ovl_dir"/rorootfs.img
+            # Set ovlpath.
+            ovlpath="/${live_dir}/overlay-${label}-$roPARTUUID"
+            echo "$ovlpath" > /run/initramfs/ovlpath
+            ;;
+        ropt_2)
+            [ "$mntDir" ] && {
+                cd /run/initramfs/live"${base_dir:+/$base_dir}" || Die "Unable to change directory to /run/initramfs/live${base_dir:+/$base_dir}"
+                # Copy source image minus LiveOS directory and any overlay.
+                find . -type f \! -path ./LiveOS -prune \! -path ./overlay-\* -prune \
+                    \! -path ./ovlwork -prune \! -name squashfs.img -prune \! -name rorootfs.img -prune | cpio -p -dum --quiet "$mntDir/$live_dir"/.
+                cd - || Die "Problem changing directory from /run/initramfs/live${base_dir:+/$base_dir}"
+                umount -d /run/initramfs/live
+                ln -sf "$p_pt" /run/initramfs/livedev
+                rm -- /run/initramfs/isofile
+            }
+            [ -h /run/initramfs/isoloop ] && {
+                losetup -d /run/initramfs/isoloop
+                umount /run/initramfs/isoscan > /dev/null 2>&1
+                rmdir /run/initramfs/isoscan
+                rm -- /run/initramfs/isoloop /run/initramfs/isoscandev
+            }
             ;;
     esac
     [ -d /run/initramfs/iso ] && {

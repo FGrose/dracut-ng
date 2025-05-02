@@ -1472,7 +1472,7 @@ snapshot of the root filesystem or the OverlayFS mount will use an additional
 lower layer with the root filesystem.
 --
 
-**rd.live.image**{[=__esp[=<sizeMiB>__]|[,{__<devspec>__|PROMPTDK}[,{iso|ciso}[,mklabel]]]]}::
+**rd.live.image**{[=__esp[=<sizeMiB>__]|[,{__<devspec>__|PROMPTDK}[,{ropt,iso,ciso}[,mklabel]]]}::
 This parameter without an argument supports the legacy syntax of passing just
 the base root filesystem partition *root=_<device specification>_* instead
 of *root=live:_<device specification>_*.
@@ -1515,8 +1515,19 @@ to the `/isos/` directory of the *rd.overlay=* designated overlay and used as a
 new boot target on the disk. As above, the boot device EFI System Partition and
 the GRUB menu will be updated for this boot target. 
 * *mklabel* causes the specified disk to be totally repartitioned with a new
-GUID Partition Table (GPT). A default sized EFI System Partition will be
-created. One of the *{_ropt|iso|ciso_}* installation options must be included.
+GUID Partition Table (GPT). A new EFI System Partition of default size will be
+created.  One of the installation options *{_ropt|iso|ciso_}* must be included.
+* *_ropt_* signals the creation of a readonly partition for the OS root
+filesystem. The EROFS or SquashFS root filesystem is copied into the new
+partition usually from an isofile or iso partition.
+* *_iso_* specifies configuration of an *_iso-scan/filename_* image file for
+booting with persistence in the designated overlay.  The boot kernel and
+initramfs will be copied to the boot device EFI System Partition and the GRUB
+menu will be updated with this boot target.
+* *_ciso_* specifies that the *_iso-scan/filename_* image file is to be copied
+to the `/isos/` directory of the just designated overlay and used as a new boot
+target on the disk. As above, the boot device EFI System Partition and the GRUB
+menu will be updated for this boot target. 
 
 Uncompressed live filesystem image::
 When the live system was installed with the '--skipcompress' option of the

@@ -96,13 +96,13 @@ getargbool 0 rd.overlayfs && {
 
 # release resources on iso-scan boots with rd.live.ram
 if [ -d /run/initramfs/isoscan ] && {
-    [ -f /run/initramfs/squashed.img ] || [ -f /run/initramfs/rootfs.img ]
+    [ -f /run/initramfs/rorootfs.img ] || [ -f /run/initramfs/rootfs.img ]
 }; then
     umount --detach-loop /run/initramfs/live
     losetup -d /run/initramfs/isoloop
     umount /run/initramfs/isoscan
 elif [ "${DRACUT_SYSTEMD-}" ]; then
-    cp /run/systemd/generator.early/run-initramfs-live.mount run/systemd/system/
+    cp /run/systemd/generator.early/run-initramfs-live.mount /run/systemd/system/
     ln -s ../run-initramfs-live.mount /run/systemd/system/local-fs.target.wants/run-initramfs-live.mount
 fi
 # Hide the base rootfs mountpoint.
