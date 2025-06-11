@@ -603,7 +603,7 @@ parse_cfgArgs() {
                 espStart=1
                 cfg=ovl
                 ;;
-            ciso)
+            iso | ciso)
                 cfg="$1"
                 isofile=$(readlink -f /run/initramfs/isofile)
                 ;;
