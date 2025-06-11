@@ -134,10 +134,10 @@ s/\s+(quiet|rhgb|splash)\s+(quiet|rhgb|splash)\s+/ /
             read -r uuid < /run/initramfs/live_uuid
             rootcfg=UUID=$uuid
             ;;
-        ciso)
+        iso | ciso)
             label=$(realpath /run/initramfs/isofile)
             label="${label##*/}"
-            rootcfg="/dev/loop0p1 iso-scan/filename=PARTUUID=$(findmnt -nro PARTUUID /run/initramfs/isoscandev):isos/${label}"
+            rootcfg="/dev/loop0p1 iso-scan/filename=UUID=$(findmnt -nro UUID /run/initramfs/isoscandev):isos/${label}"
             ;;           
     esac
     cfgargs="rd.live.overlay.overlayfs=LiveOS_rootfs${ROOTFLAGS:+ rootflags=$ROOTFLAGS}"
