@@ -2,8 +2,9 @@
 
 # called by dracut
 check() {
-    # a live host-only image doesn't really make a lot of sense
-    [[ $hostonly ]] && return 1
+    if [[ $hostonly ]] && dracut_module_included dmsquash-live; then
+        dwarn "WARNING: A live image is typically no-hostonly."
+    fi
     return 255
 }
 
