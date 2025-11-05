@@ -4,6 +4,7 @@ DRACUT.CMDLINE(7)
 :man source:   dracut
 :man manual:   dracut
 :man version:  {version}
+:toc:
 
 NAME
 ----
