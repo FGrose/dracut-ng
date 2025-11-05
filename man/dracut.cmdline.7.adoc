@@ -4,6 +4,7 @@ DRACUT.CMDLINE(7)
 :man source:   dracut
 :man manual:   dracut
 :man version:  {version}
+:toc:
 
 NAME
 ----
@@ -1307,7 +1308,6 @@ Dracut offers multiple options for live booted images through the
 _dmsquash-live_ and _overlayfs_ modules augmented by _dmsquash-live-ntfs_,
 _livenet_, _squash_, & _partition-lib_ among other modules.
 
-=====================
 SquashFS or EROFS (read-only) base filesystem image:::
 Note -- There are 3 separate overlay types available:
 - Device-mapper snapshots (the original offering),
