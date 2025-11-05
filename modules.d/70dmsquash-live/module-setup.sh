@@ -2,8 +2,6 @@
 
 # called by dracut
 check() {
-    # a live host-only image doesn't really make a lot of sense
-    [[ $hostonly ]] && return 1
     return 255
 }
 
@@ -29,6 +27,7 @@ installkernel() {
 
 # called by dracut
 install() {
+    [[ ${hostonly-} ]] && dwarn "WARNING: A live image is typically no-hostonly."
     inst_multiple umount dmsetup blkid dd losetup lsblk find rmdir stat
     inst_multiple -o checkisomd5
     inst_hook cmdline 30 "$moddir/parse-dmsquash-live.sh"
