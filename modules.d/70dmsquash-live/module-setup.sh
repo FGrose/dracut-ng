@@ -2,8 +2,7 @@
 
 # called by dracut
 check() {
-    # a live host-only image doesn't really make a lot of sense
-    [[ $hostonly ]] && return 1
+    [[ $hostonly ]] && dinfo "NOTE: A live image is typically no-hostonly."
     return 255
 }
 
