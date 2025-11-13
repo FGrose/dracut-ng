@@ -178,7 +178,7 @@ getcmdline() {
             CMDLINE_PROC="$CMDLINE_PROC $_line"
         done < /proc/cmdline
     fi
-    # Ordered last for boot-time precedence.
+    # Ordered last for precedence.
     if [ -e /etc/kernel/cmdline ]; then
         while read -r _line || [ -n "$_line" ]; do
             CMDLINE_ETC_KERNEL="$CMDLINE_ETC_KERNEL $_line"
@@ -188,6 +188,16 @@ getcmdline() {
     printf "%s" "$CMDLINE"
 }
 
+# getarg <KEY>[=[<VALUE>]] [-d [-{y|n}] <alt_KEY>[=[<VALUE>]] ...]
+# With <KEY>[=], print the <VALUE> of the final instance of <KEY>=<VALUE> in
+# the kernel command line and return success.
+# When a =<VALUE> argument is provided, return success or failure only, but
+# note that a '=0' argument will return success, so use getargbool() instead,
+# so that, for example, getargbool 0 rd.info will return failure when rd.info=0
+# is on the command line (eventhough getargbool 0 rd.info=0 will return success).
+# -d signals that <alt_KEY> is deprecated in place of <KEY>;
+# -{y|n} signals that success|failure should be returned on =<VALUE> or <KEY> match,
+# and -n will also suggest using '<KEY>=0' be used if <alt_KEY> was used.
 getarg() {
     debug_off
     local _deprecated='' _newoption=''
@@ -255,13 +265,16 @@ getarg() {
     return 1
 }
 
+# getargbool <defaultval> <KEY>[=[<VALUE>]] [-d [-{y|n}] <alt_KEY>[=[<VALUE>]] ...]
 # getargbool <defaultval> <args...>
 # False if "getarg <args...>" returns "0", "no", or "off".
 # True if getarg returns any other non-empty string.
 # If not found, assumes <defaultval> - usually 0 for false, 1 for true.
-# example: getargbool 0 rd.info
-#   true: rd.info, rd.info=1, rd.info=xxx
-#   false: rd.info=0, rd.info=off, rd.info not present (default val is 0)
+# example: `getargbool 0 rd.info` 
+#  return  command line value
+#    true: rd.info, rd.info=1, rd.info=xxx
+#   false: rd.info=0, rd.info=off, rd.info not present (default val is 0),
+#          but `getargbool [0|1] rd.info=0` returns true.
 getargbool() {
     local _b
     unset _b
@@ -308,6 +321,13 @@ getargnum() {
     echo "$_default"
 }
 
+# getargs <KEY>[=[<VALUE>]] [-d [-{y|n}] <alt_KEY>[=[<VALUE>]] ...]
+# With <KEY>[=], print a newline-separated list of the <VALUE>s of any instance
+# of <KEY>=<VALUE> in the kernel command line and return success.
+# When <KEY> is present without the optional =<VALUE> argument, print the <KEY>
+# string in place of a <VALUE>.
+# When a =<VALUE> argument is provided, return success or failure only.
+# -d signals that <alt_KEY> is deprecated in place of <KEY>;
 getargs() {
     debug_off
     CMDLINE=$(getcmdline)
