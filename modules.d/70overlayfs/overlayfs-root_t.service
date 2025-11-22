@@ -1,0 +1,14 @@
+[Unit]
+Description=SELinux root contexts for virtual OverlayFS upper directories
+DefaultDependencies=no
+ConditionPathExists=/sys/fs/selinux
+ConditionPathExists=/run/overlayfs
+ConditionPathIsSymbolicLink=!/run/overlayfs
+Before=local-fs-pre.target first-boot-complete.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/overlayfs-root_t.sh
+
+[Install]
+WantedBy=sysinit.target
