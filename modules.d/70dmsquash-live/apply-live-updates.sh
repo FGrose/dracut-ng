@@ -16,9 +16,11 @@ if [ -h /dev/root ] && [ -d /run/initramfs/live/updates ] || [ -d /updates ]; th
         )
     done
 fi
+
 # release resources on iso-scan boots with rd.live.ram
-if [ -d /run/initramfs/isoscan ] \
-    && [ -f /run/initramfs/squashed.img ] || [ -f /run/initramfs/rootfs.img ]; then
+if [ -d /run/initramfs/isoscan ] && {
+    [ -f /run/initramfs/squashed.img ] || [ -f /run/initramfs/rootfs.img ]
+}; then
     umount --detach-loop /run/initramfs/live
     umount /run/initramfs/isoscan
 fi
