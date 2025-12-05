@@ -98,3 +98,4 @@ fi
 # Hide the base rootfs mountpoint.
 umount -l /run/rootfsbase > /dev/null 2>&1
 umount "$NEWROOT"/run
+
