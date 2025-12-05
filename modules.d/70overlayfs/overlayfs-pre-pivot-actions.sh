@@ -1,7 +1,11 @@
 #!/bin/sh
 type getarg > /dev/null 2>&1 || . /lib/dracut-lib.sh
 
-getargbool rd.overlay || return 0
+getargbool 0 rd.overlay || return 0
+
+# /run is mounted at $NEWROOT/run after switch_root;
+# bind-mount it in place so that updates for /run actually land in /run.
+mount -o bind /run "$NEWROOT"/run
 
 if [ -d /run/ovl/upperdir ]; then
     # Setup service for post switch-root relabelling of virtual filesystem objects.
@@ -18,3 +22,5 @@ fi
 
 # Hide the base rootfs mountpoint.
 umount -l /run/rootfsbase
+
+umount "$NEWROOT"/run
