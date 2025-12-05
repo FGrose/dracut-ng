@@ -32,4 +32,3 @@ rfstype="$(getarg rootfstype=)"
 rflags="$(getarg rootflags=)"
 
 overlayfs_mount_generator
-

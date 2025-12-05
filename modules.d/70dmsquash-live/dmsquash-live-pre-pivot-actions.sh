@@ -94,3 +94,4 @@ if [ -d /run/initramfs/isoscan ] && {
     umount /run/initramfs/isoscan
 fi
 umount "$NEWROOT"/run
+

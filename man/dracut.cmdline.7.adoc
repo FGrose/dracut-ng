@@ -1694,7 +1694,7 @@ of the base root filesystem and the persistent overlay,
 * OverlayFS mounts will link the persistent overlay directory at
 `/run/overlayfs‑r` as an additional read-only lower layer stacked over the base
 root filesystem, and `/run/overlayfs` becomes the temporary, writable, upper
-directory overlay, to complete the bootable root filesystem. In this case, the
+directory overlay, to complete the bootable root filesystem.  In this case the
 dracut 'overlayfs' module is required.
 
 **rd.overlay.reset=**1::
