@@ -117,4 +117,3 @@ else
         echo JobRunningTimeoutSec=3000
     } > "$GENERATOR_DIR/"dev-mapper-live\x2drw.device.d/timeout.conf
 fi
-
