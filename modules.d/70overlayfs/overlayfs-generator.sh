@@ -12,6 +12,7 @@ case "${overlay_pt%%[=/]*}" in
     '' | 1) ovlfs_name=os_rootfs ;;
     "${overlay_pt%%,*}") ovlfs_name=${overlay_pt%%,*} ;;
     *) # devspec present
+        unset -v 'volatile'
         # with source name prefix
         [ "${overlay_pt%%,*}" != "$overlay_pt" ] && ovlfs_name=${overlay_pt%%,*}
         overlay_pt=${overlay_pt##*,}
@@ -62,10 +63,13 @@ mkdir -p "$GENERATOR_DIR/"run-rootfsbase.device.d
     echo After=run-rootfsbase.mount
     echo [Mount]
     echo Where=/sysroot
-    getargbool 0 rd.overlayfs.readonly && readonly_overlay=--readonly
+    getargbool 0 rd.overlayfs.readonly && {
+        readonly_overlay=--readonly
+        volatile=volatile
+    }
     basedirs=lowerdir="${readonly_overlay:+/run/overlayfs-r:}"/run/rootfsbase
     echo What="${ovlfs_name:=os_rootfs}"
-    echo Options="${basedirs}",upperdir=/run/overlayfs,workdir=/run/ovlwork
+    echo Options="${volatile:+volatile,}${basedirs}",upperdir=/run/overlayfs,workdir=/run/ovlwork
     echo Type=overlay
 } > "$GENERATOR_DIR"/sysroot.mount
 ovlfs_name=$(echo "$ovlfs_name" | sed 's,/,\\x2f,g;s, ,\\x20,g;s,-,\\x2d,g;')

@@ -77,8 +77,8 @@ GENERATOR_DIR="$2"
         getargbool 0 rd.overlayfs.readonly -d rd.live.overlayfs.readonly && readonly_overlay=--readonly
         basedirs=lowerdir="${readonly_overlay:+/run/overlayfs-r:}"/run/rootfsbase
         echo What="${ovlfs_name:=LiveOS_rootfs}"
-        echo "Options=${basedirs},upperdir=/run/overlayfs,workdir=/run/ovlwork"
-        echo "Type=overlay"
+        echo Options="${volatile:+volatile,}${basedirs}",upperdir=/run/overlayfs,workdir=/run/ovlwork
+        echo Type=overlay
         _dev=$(echo "$ovlfs_name" | sed 's,/,\\x2f,g;s, ,\\x20,g;s,-,\\x2d,g;')
     else
         echo "What=/dev/mapper/live-rw"
