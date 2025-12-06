@@ -7,11 +7,13 @@ command -v getarg > /dev/null || . /lib/dracut-lib.sh
 OverlayFS="$(getarg rd.overlayfs)" || exit 0
 load_fstype overlay || die 'OverlayFS is required but unavailable.'
 
+volatile=volatile
 case "${OverlayFS%%[=/]*}" in
     0 | no | off) exit 0 ;;
     '' | 1) ovlfs_name=os_rootfs ;;
     "${OverlayFS%%,*}") ovlfs_name=${OverlayFS%%,*} ;;
     *) # devspec present
+        unset -v 'volatile'
         # with source name prefix
         [ "${OverlayFS%%,*}" != "$OverlayFS" ] && ovlfs_name=${OverlayFS%%,*}
         ;;
@@ -38,10 +40,13 @@ GENERATOR_DIR="$2"
     echo Before=initrd-root-fs.target
     echo [Mount]
     echo Where=/sysroot
-    getargbool 0 rd.overlayfs.readonly && readonly_overlay=--readonly
+    getargbool 0 rd.overlayfs.readonly && {
+        readonly_overlay=--readonly
+        volatile=volatile
+    }
     basedirs=lowerdir="${readonly_overlay:+/run/overlayfs-r:}"/run/rootfsbase
     echo What="${ovlfs_name:=os_rootfs}"
-    echo Options="${basedirs}",upperdir=/run/overlayfs,workdir=/run/ovlwork
+    echo Options="${volatile:+volatile,}${basedirs}",upperdir=/run/overlayfs,workdir=/run/ovlwork
     echo Type=overlay
 } > "$GENERATOR_DIR"/sysroot.mount
 ovlfs_name=$(echo "$ovlfs_name" | sed 's,/,\\x2f,g;s, ,\\x20,g;s,-,\\x2d,g;')
