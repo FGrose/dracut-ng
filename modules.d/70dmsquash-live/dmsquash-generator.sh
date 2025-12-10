@@ -18,19 +18,15 @@ if OverlayFS="$(getarg rd.overlay -d -y rd.live.overlay.overlayfs -d rd.live.ove
     [ "$OverlayFS" = off ] && unset -v 'OverlayFS'
 fi
 
-[ -z "$root" ] && root=$(getarg root=)
-
+[ "$root" ] || root=$(getarg root=)
 # support legacy syntax of passing rd.live.image and then just the base root
 if getargbool 0 rd.live.image; then
-    liveroot="live:$root"
+    liveroot=live:"$root"
 fi
-
-if [ "${root%%:*}" = "live" ]; then
+if [ "${root%%:*}" = live ]; then
     liveroot=$root
 fi
-
-[ "${liveroot%%:*}" = "live" ] || exit 0
-
+[ "${liveroot%%:*}" = live ] || exit 0
 case "$liveroot" in
     live:LABEL=* | LABEL=* | live:UUID=* | UUID=* | live:PARTUUID=* | PARTUUID=* | live:PARTLABEL=* | PARTLABEL=*)
         root="live:$(label_uuid_to_dev "${root#live:}")"
@@ -39,12 +35,12 @@ case "$liveroot" in
     live:CDLABEL=* | CDLABEL=*)
         root="${root#live:}"
         root="$(echo "$root" | sed 's,/,\\x2f,g;s, ,\\x20,g')"
-        root="live:/dev/disk/by-label/${root#CDLABEL=}"
+        root=live:/dev/disk/by-label/"${root#CDLABEL=}"
         rootok=1
         ;;
     live:/*.[Ii][Ss][Oo] | /*.[Ii][Ss][Oo])
         root="${root#live:}"
-        root="liveiso:${root}"
+        root=liveiso:"${root}"
         rootok=1
         ;;
     live:/dev/*)
@@ -85,7 +81,7 @@ getarg live.updates= && {
 [ "$rootok" ] || exit 0
 
 GENERATOR_DIR="$2"
-[ -z "$GENERATOR_DIR" ] && exit 1
+[ "$GENERATOR_DIR" ] || exit 1
 [ -d "$GENERATOR_DIR" ] || mkdir -p "$GENERATOR_DIR"
 
 rfstype="$(getarg rootfstype=)"
