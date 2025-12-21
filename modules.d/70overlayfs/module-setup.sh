@@ -34,5 +34,4 @@ install() {
     inst_hook pre-pivot 51 "$moddir"/overlayfs-pre-pivot-actions.sh
     inst_script "$moddir"/overlayfs-root_t.sh /sbin/overlayfs-root_t.sh
     inst_simple "$moddir"/overlayfs-root_t.service "$systemdsystemunitdir"/overlayfs-root_t.service
-    inst_hook pre-pivot 51 "$moddir"/overlayfs-pre-pivot-actions.sh
 }
