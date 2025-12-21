@@ -1206,6 +1206,31 @@ rd.znet=qeth,0.0.0600,0.0.0601,0.0.0602,layer2=1,portname=foo
 rd.znet=ctc,0.0.0600,0.0.0601,protocol=bar
 --
 
+_rd.btrfs.snapshot_
+~~~~~~~~~~~~~~~~~~~
+**rd.btrfs.snapshot**[=__<source_name>[,{ro|rw}:<subv_path>]]__::
+Requires the dracut 'btrfs' & 'overlayfs' modules. The boot command line
+parameter _rd.btrfs.snapshot_ without additional arguments triggers the
+creation of a `/.snapshots` btrfs subvolume of the root filesystem and two
+snapshots named by the current local datetime. One is read-write and the second
+a read-only snapshot of the first named `<datetime>-origin`. Then a boot-time
+menu of available snapshots is presented to the user to select the snapshot to
+launch.  If a read-only snapshot is selected, an OverlayFS mount is used to
+overlay the read-only base snapshot with either a transient (the default) or a
+persistent overlay specified by *_rd.overlayfs=_*. +
+* *_=<source_name>_* optionally sets the OverlayFS mount source name on a
+persistent overlay of a read-only snapshot. The default is os_snapfs.
+* *_{ro|rw}:<subv_path>_* specifies creation of a new ro|rw snapshot at
+`/.snapshots/<subv_path>`. (Existing btrfs snapshots may be specified for
+booting using the *_rootflags={subvolid|subvol}=<subv_spec>_* kernel command
+line option.)
+
+The command `btrfs subvolume set-default <snapshot_volid> <rootfs mountpoint>`
+is used to control the subvolume to mount.  Should there be any failure,
+`btrfs subvolume get-default <rootfs mountpoint>` may help diagnose the state. +
+`btrfs subvolume set-default 5 <rootfs mountpoint>` restores the default
+subvolume to `ID 5 (FS_TREE)`.
+
 OverlayFS
 ~~~~~~~~~
 **root=ovl:**__<device specification>__::
