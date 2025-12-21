@@ -18,17 +18,19 @@ get_rd_overlay() {
     echo "$rd_overlay"
 }
 
-# Call with IFS=, parse_Args "$ovl_pt" | "$p_Partition"
+# Call with IFS=, parse_Args $ovl_pt | $ p_pt| $btrfs_snap
 parse_Args() {
     # shellcheck disable=SC2068
-    set -- $@ # rd.overlay or rd.live.overlay.overlayfs
+    set -- $@ # rd.overlay, rd.live.overlay.overlayfs, or rd.btrfs.snapshot
     IFS=' 	
 '
     for _; do
         case "$1" in
-            '' | btrfs | ext[432] | f2fs | xfs)
+            btrfs | ext[432] | f2fs | xfs)
                 p_ptfsType=${1:-${p_ptfsType:-ext4}}
                 ;;
+            '' | auto) btrfs_snap=auto ;;
+            r[ow]:?*) btrfs_snap="$1" ;;
             subvol=?*) subvol=${1#subvol=} ;;
             subvolid=?*) subvolid=${1#subvolid=} ;;
             *[!0-9]* | 0*)
