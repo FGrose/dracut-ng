@@ -18,7 +18,7 @@ check() {
 
 # called by dracut
 depends() {
-    echo udev-rules initqueue
+    echo udev-rules initqueue overlayfs
     return 0
 }
 
@@ -55,7 +55,13 @@ install() {
     fi
 
     inst_multiple -o btrfsck btrfs-zero-log btrfstune
+    inst date
+    inst_binary /etc/localtime
     inst btrfs /sbin/btrfs
+    inst_hook cmdline 99 "$moddir"/parse-btrfs-snapshot.sh
+    inst_hook pre-udev 31 "$moddir"/btrfs-snapshot-genrules.sh
+    inst_script "$moddir"/btrfs-snapshot.sh /sbin/btrfs-snapshot
+    inst_hook pre-mount 51 "$moddir"/btrfs-snapshot-premount-actions.sh
 
     if [[ $hostonly_cmdline == "yes" ]]; then
         printf "%s\n" "$(cmdline)" > "${initdir}/etc/cmdline.d/20-btrfs.conf"

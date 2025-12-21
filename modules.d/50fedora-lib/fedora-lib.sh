@@ -11,7 +11,7 @@ set_FS_opts() {
     case "$2" in
         p_ptFlags)
             rd_flags=$(getarg rd.ovl.flags)
-            [ "$rd_flags" ] || rd_flags=lazytime
+            rd_flags=lazytime"${rdflags:+,"$rd_flags"}"
             ;;
         rflags)
             rd_flags=$(getarg rootflags=) ;;
