@@ -1206,6 +1206,25 @@ rd.znet=qeth,0.0.0600,0.0.0601,0.0.0602,layer2=1,portname=foo
 rd.znet=ctc,0.0.0600,0.0.0601,protocol=bar
 --
 
+_btrfs.snapshot_
+~~~~~~~~~~~~~~~~
+Requires the dracut 'btrfs' & 'overlayfs' modules. The boot commandline
+parameter _btrfs.snapshot_ triggers the creation of a `/.snapshots` btrfs
+subvolume of the root filesystem and two snapshots named by the current
+datetime. One is read-write and the second a read-only snapshot of the first
+named `<datetime>-origin`.
+
+A boot-time menu of available snapshots is presented to the user to select the
+snapshot to launch.  If a read-only snapshot is selected, an OverlayFS mount
+is used to overlay the read-only base snapshot with a transient or persistent
+overlay specified by *_rd.overlayfs=_*. A transient overlay is the default.
+
+The command `btrfs subvolume set-default <snapshot_volid> <rootfs mountpoint>`
+is used to control the subvolume to mount.  Should there be any failure,
+`btrfs subvolume get-default <rootfs mountpoint>` may help diagnose the state.
+`btrfs subvolume set-default 5 <rootfs mountpoint>` sets the default subvolume
+to ID 5 (FS_TREE).
+
 OverlayFS
 ~~~~~~~~~
 **root=ovl:**__<device specification>__::
