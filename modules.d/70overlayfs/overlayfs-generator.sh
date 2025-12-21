@@ -3,6 +3,12 @@
 
 command -v get_rd_overlay > /dev/null || . /lib/overlayfs-lib.sh
 
+btrfs_snap="$(getarg rd.btrfs.snapshot)" && {
+    IFS=, parse_Args "${btrfs_snap:=auto}"
+    ln -s "$btrfs_snap" /run/initramfs/btrfs_snap
+    : "${OverlayFS:=os_snapfs}"
+}
+
 [ "$root" ] || root=$(getarg root=)
 case "$root" in
     ovl:LABEL=* | ovl:UUID=* | ovl:PARTUUID=* | ovl:PARTLABEL=*)
@@ -13,14 +19,14 @@ case "$root" in
         rootok=1
         ;;
 esac
-[ "$rootok" ] || exit 0
+[ "$rootok" ] || [ "$btrfs_snap" ] || exit 0
 
 GENERATOR_DIR="$2"
 [ "$GENERATOR_DIR" ] || exit 1
 [ -d "$GENERATOR_DIR" ] || mkdir -p "$GENERATOR_DIR"
 
 get_rd_overlay os_rootfs
-[ "$OverlayFS"] || exit 0
+[ "$OverlayFS" ] || [ "$btrfs_snap" ] || exit 0
 
 rfstype="$(getarg rootfstype=)"
 rflags="$(getarg rootflags=)"
