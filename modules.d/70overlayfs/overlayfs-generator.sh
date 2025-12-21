@@ -22,7 +22,7 @@ case "$root" in
         rootok=1
         ;;
 esac
-[ "$rootok" ] || exit 0
+[ "$rootok" ] || [ "$btrfs_snap" ] || exit 0
 
 GENERATOR_DIR="$2"
 [ "$GENERATOR_DIR" ] || exit 1
