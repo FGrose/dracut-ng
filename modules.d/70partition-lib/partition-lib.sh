@@ -1205,6 +1205,7 @@ install_Image() {
                 roPARTUUID=$(readlink /run/initramfs/live/"${base_dir}"/rorootfs.img)
                 roPARTUUID=${roPARTUUID##*/}
             else
+                # image PARTUUID because SquashFS has no UUID.
                 roPARTUUID=$(blkid "$ro_Partition")
                 roPARTUUID="${roPARTUUID#*PARTUUID=\"}"
                 roPARTUUID="${roPARTUUID%%\"*}"
@@ -1241,22 +1242,15 @@ install_Image() {
 }
 
 mount_partition() {
-    mkdir -p "$mntDir"
+    mkdir -p "$mountPoint"
     if [ "${DRACUT_SYSTEMD-}" ]; then
-        systemctl start run-os_persist.mount || die "Unable to mount $mntDir."
+        systemctl start "$(dev_unit_name "$mountPoint")".mount \
+            || Die "Unable to mount $mountPoint."
     else
-        # Repurpose 99-mount-root.sh for mounting the persistence partition.
-        fstype="${p_ptfsType:-auto}" srcPartition="$overlay_pt" \
-            mountPoint="$mntDir" srcflags="$p_ptFlags" fsckoptions="$fsckoptions" \
+        # Repurpose 99-mount-root.sh for mounting the partition.
+        fstype="${fsType:-auto}" srcPartition="$srcPartition" \
+            mountPoint="$mountPoint" srcflags="$srcflags" fsckoptions="$fsckoptions" \
             override=override . "$hookdir"/mount/99-mount-root.sh
-    fi
-    if ismounted "$mntDir"; then
-        mkdir -p "$mntDir${ovl_dir:+/"$ovl_dir"}/ovlwork" "$mntDir$ovlpath"
-    else
-        prompt_message \
-            '   Failed to mount the persistent overlay; using a temporary one.' \
-            '  All new root filesystem changes will be lost on shutdown.' \
-            '  Press [Enter] to continue.'
     fi
 }
 
