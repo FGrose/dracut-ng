@@ -1205,6 +1205,7 @@ install_Image() {
                 roPARTUUID=$(readlink /run/initramfs/live/"${base_dir}"/rorootfs.img)
                 roPARTUUID=${roPARTUUID##*/}
             else
+                # image PARTUUID because SquashFS has no UUID.
                 roPARTUUID=$(blkid "$ro_Partition")
                 roPARTUUID="${roPARTUUID#*PARTUUID=\"}"
                 roPARTUUID="${roPARTUUID%%\"*}"

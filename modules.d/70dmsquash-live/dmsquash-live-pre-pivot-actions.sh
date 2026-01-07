@@ -23,8 +23,8 @@ fi
 read -r live_dir < /run/initramfs/live_dir
 
 getargbool 0 rd.overlayfs && {
-    read -r mntDir < /run/initramfs/OverlayFS
-    p_pt_lbl="${mntDir%_rootfs}"_persist
+    read -r p_pt_lbl < /run/initramfs/OverlayFS
+    p_pt_lbl="${p_pt_lbl%_rootfs}"_persist
     mntDir=/run/"$p_pt_lbl"
 
     [ -d /run/initramfs/ESP/"$live_dir" ] && {
