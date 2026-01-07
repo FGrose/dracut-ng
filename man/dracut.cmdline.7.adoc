@@ -1246,13 +1246,23 @@ read-only base (lower) filesystem.  The full filesystem is provided through a
 special overlay type mount that merges at least two directories, designated the
 lower and the upper.  If an OverlayFS upper directory for a base root
 filesystem is not present at boot time, a tmpfs directory will be created at
-`/run/overlayfs` to provide temporary read-write storage.  Persistent storage
-can be provided on vfat or msdos formatted devices by supplying the OverlayFS
-upper directory within an embedded filesystem that supports the creation of
-trusted.* extended attributes and provides a valid d_type in readdir responses,
-such as with btrfs, ext4, f2fs, & xfs.  On non-vfat-formatted devices, a
-persistent OverlayFS overlay can extend the available root filesystem storage
-up to the capacity of the designated persistence disk device.
+`/run/overlayfs` in the `/run` tmpfs to provide temporary read-write storage.
+This filesystem is typically sized to a default of one half of the physical RAM
+in the system. The command: `mount -o remount,size=<nbytes> /run` may be used
+to resize this virtual filesystem after booting. An entry like the following in
+`/etc/fstab` will alter the default:
+`none /run tmpfs defaults,size=<size|%> 0 0`
+
+Non-persistent OverlayFS mounts will have the 'volatile' mode option applied at
+mount time. This avoids all forms of sync calls to the upper filesystem.
+
+Persistent storage can be provided on vfat or msdos formatted devices by
+supplying the OverlayFS upper directory within an embedded filesystem that
+supports the creation of trusted.* extended attributes and provides a valid
+d_type in readdir responses, such as with btrfs, ext4, f2fs, & xfs.  On
+non-vfat-formatted devices, a persistent OverlayFS overlay can extend the
+available root filesystem storage up to the capacity of the designated
+persistence disk device.
 
 For live media images, see the link:https://github.com/dracut-ng/dracut-ng/edit/main/man/dracut.cmdline.7.adoc#booting-live-images[*Booting live images*] section below.
 
@@ -1378,14 +1388,6 @@ _rd.overlay=_ points to an appropriate directory with a sister at
 `/../ovlwork`, then an OverlayFS based overlay mount is employed.  Such a
 persistent OverlayFS overlay can extend the available root filesystem storage
 up to the capacity of the LiveOS disk device.
-
-For non-persistent OverlayFS overlays, the `/run/overlayfs` directory in the
-`/run` tmpfs is used for temporary storage.  This filesystem is typically sized
-to one half of the RAM total in the system. +
-The command: `mount -o remount,size=<nbytes> /run` will resize this virtual
-filesystem after booting. +
-Non-persistent OverlayFS mounts will have the 'volatile' mode option applied at
-mount time. This avoids all forms of sync calls to the upper filesystem.
 
 The internal SquashFS or EROFS structure is traditionally expected to be:
 
