@@ -19,7 +19,7 @@ if [ -d /run/initramfs/live/updates ] || [ -d /updates ]; then
 fi
 
 getargbool 0 rd.overlayfs && {
-    mntDir=/run/initramfs/LiveOS_persist
+    mntDir=/run/LiveOS_persist
     read -r live_dir < /run/initramfs/live_dir
 
     [ -f "$mntDir/$live_dir"/esp_uuid ] && {
