@@ -22,7 +22,7 @@ fi
 
 getargbool 0 rd.overlayfs && {
     read -r mntDir < /run/initramfs/OverlayFS
-    mntDir=/run/initramfs/"${mntDir%_rootfs}"_persist
+    mntDir=/run/"${mntDir%_rootfs}"_persist
     read -r live_dir < /run/initramfs/live_dir
 
     [ -f "$mntDir/$live_dir"/esp_uuid ] && {
