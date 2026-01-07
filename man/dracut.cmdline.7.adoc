@@ -1254,11 +1254,16 @@ in an OverlayFS overlay directory.
 OverlayFS overlays are directories of the files that have changed on a
 read-only base (lower) filesystem.  The full filesystem is provided through a
 special overlay type mount that merges at least two directories, designated the
-lower and the upper.  If an OverlayFS upper directory for a base root
-filesystem is not present at boot time, a tmpfs will be mounted at `/run/ovl`
-and a directory created at `/run/ovl/upperdir` to provide temporary read-write
-storage.  Persistent storage can be provided on vfat or msdos formatted devices
-by supplying the OverlayFS upper directory within an embedded filesystem that
+lower and the upper.
+
+If an OverlayFS upper directory for a base root filesystem is not present at
+boot time, a tmpfs will be mounted at `/run/ovl` and a directory created at
+`/run/ovl/upperdir` to provide temporary read-write storage.  The OverlayFS
+will be mounted using the 'volatile' mode option, which avoids all forms of
+sync calls to the upper filesystem.
+
+Persistent storage can be provided on vfat or msdos formatted devices by
+supplying the OverlayFS upper directory within an embedded filesystem that
 supports the creation of trusted.* extended attributes and provides a valid
 d_type in readdir responses, such as with btrfs, ext4, f2fs, & xfs.  On
 non-vfat-formatted devices, a persistent OverlayFS overlay can extend the
@@ -1267,11 +1272,16 @@ persistence disk device.
 
 For live media images, see the link:https://github.com/dracut-ng/dracut-ng/edit/main/man/dracut.cmdline.7.adoc#booting-live-images[*Booting live images*] section below.
 
+This filesystem is typically sized to a default of one half of the physical RAM
+in the system.  This size may be altered post boot with the command:
+`mount -o remount,size=<nbytes> /run/ovl`. An entry like the following in
+`/etc/fstab` may also be used: `none /run/ovl tmpfs defaults,size=<size|%> 0 0`
+
 **rd.overlay=**__tmpfs:[size=<size>[,nr_blocks=<n>[,nr_inodes=<n>]]]__::
 Mounts a dedicated tmpfs with the specified options for the OverlayFS upper
-directory, instead of using the default `/run` tmpfs.  This allows controlling
-the size of the writable overlay at boot time, which is useful for deployments
-where the available RAM is known in advance, e.g., MAAS ephemeral environments.
+directory.  This allows controlling the size of the writable overlay at boot
+time, which is useful for deployments where the available RAM is known in
+advance, e.g., MAAS ephemeral environments.
 +
 Supported options (comma-separated):
 +
@@ -1297,9 +1307,7 @@ to provide a copy-on-write union directory for the root filesystem.
 One may apply a temporary OverlayFS overlay to a standard block root partition
 by entering simply **rd.overlay** on the kernel command line, or use the
 *rd.overlay=*_tmpfs:[size=<size>[,nr_blocks=<n>[,nr_inodes=<n>]]]_ options to
-specify the tmpfs mount options.  The OverlayFS will be mounted using the
-'volatile' mode option, which avoids all forms of sync calls to the upper
-filesystem.
+specify the tmpfs mount options.  
 +
 Apply a persistent OverlayFS overlay to a standard block root partition by
 adding the _<devspec>:<pathspec>_ arguments to this parameter.
@@ -1414,14 +1422,6 @@ _rd.overlay=_ points to an appropriate directory with a sister at
 `/../ovlwork`, then an OverlayFS based overlay mount is employed.  Such a
 persistent OverlayFS overlay can extend the available root filesystem storage
 up to the capacity of the LiveOS disk device.
-
-For non-persistent OverlayFS overlays, the `/run/overlayfs` directory in the
-`/run` tmpfs is used for temporary storage.  This filesystem is typically sized
-to one half of the RAM total in the system. +
-The command: `mount -o remount,size=<nbytes> /run` will resize this virtual
-filesystem after booting. +
-Non-persistent OverlayFS mounts will have the 'volatile' mode option applied at
-mount time. This avoids all forms of sync calls to the upper filesystem.
 
 The internal SquashFS or EROFS structure is traditionally expected to be:
 
