@@ -122,23 +122,14 @@ overlayfs_mount_generator() {
     } > "$GENERATOR_DIR/$ovlfs_name".device.d/timeout.conf
 }
 
-mount_p_Partition() {
-    [ -d "${mntDir:=/run/os_persist}" ] || mkdir -p "$mntDir"
+mount_partition() {
+    mkdir -p "$mountPoint"
     if [ "${DRACUT_SYSTEMD-}" ]; then
-        systemctl start run-os_persist.mount || Die "Unable to mount $mntDir."
+        systemctl start $(dev_unit_name "$mountPoint").mount \
+            || Die "Unable to mount $mountPoint."
     else
-        # Repurpose 99-mount-root.sh for mounting the persistence partition.
-        fstype="${p_ptfsType:-auto}" srcPartition="$overlay_pt" \
-            mountPoint="$mntDir" srcflags="$p_ptFlags" fsckoptions="$fsckoptions" \
-            "$hookdir"/mount/99-mount-root.sh override
-    fi
-    if findmnt "$mntDir" > /dev/null 2>&1; then
-        mkdir -p "$mntDir${ovl_dir:+/"$ovl_dir"}/ovlwork" "$mntDir$ovlpath"
-    else
-        prompt_message \
-            '   Failed to mount the persistent overlay; using a temporary one.' \
-            '  All new root filesystem changes will be lost on shutdown.' \
-            '  Press [Enter] to continue.'
+        # Repurpose 99-mount-root.sh for mounting the partition.
+        "$hookdir"/mount/99-mount-root.sh override
     fi
 }
 
