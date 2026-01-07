@@ -19,7 +19,7 @@ if [ -d /run/initramfs/live/updates ] || [ -d /updates ]; then
 fi
 
 getargbool 0 rd.overlayfs && {
-    mntDir=/run/initramfs/LiveOS_persist
+    mntDir=/run/LiveOS_persist
     live_dir=$(readlink /run/initramfs/live_dir)
 
     [ -f "$mntDir/$live_dir"/esp_uuid ] && {
@@ -80,9 +80,6 @@ getargbool 0 rd.overlayfs && {
             flock /run/initramfs/espdev fsck.fat -aV${VERBOSE:+v} /run/initramfs/espdev 2>&1
         }
     }
-
-    # Hide the base rootfs partition mount.
-    umount -l /run/rootfsbase > /dev/null 2>&1
 }
 
 # release resources on iso-scan boots with rd.live.ram

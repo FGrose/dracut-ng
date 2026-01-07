@@ -1069,14 +1069,15 @@ install_Image() {
             ;;
         ropt)
             umount /run/initramfs/rorootfs
-            src=$ROROOTFS dst=$ro_Partition msg='to disk...' dd_copy
-            losetup -d "$ROROOTFS"
-            ROROOTFS=$ro_Partition
+            src=$FSIMG dst=$ro_Partition msg='to disk...' dd_copy
+            losetup -d "$FSIMG"
+            FSIMG=$ro_Partition
 
             if [ "$base_dir" ]; then
                 roPARTUUID=$(readlink /run/initramfs/live/"${base_dir}"/rorootfs.img)
                 roPARTUUID=${roPARTUUID##*/}
             else
+                # image PARTUUID because SquashFS has no UUID.
                 roPARTUUID=$(blkid "$ro_Partition")
                 roPARTUUID="${roPARTUUID#*PARTUUID=\"}"
                 roPARTUUID="${roPARTUUID%%\"*}"

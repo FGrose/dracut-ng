@@ -12,14 +12,14 @@ command -v do_overlayfs > /dev/null || . /lib/overlayfs-lib.sh
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
 [ "$1" ] || exit 1
-ovl_pt=$(getarg rd.overlay) || exit 0
+p_pt=$(getarg rd.overlay) || exit 0
 load_fstype overlay || die 'OverlayFS is required but unavailable.'
 
 root_pt="$1"
-get_ovl_pt os_rootfs ovl_pt
-[ "$ovl_pt" = off ] && exit 0
+get_ovl_pt os_rootfs p_pt
+[ "$p_pt" = off ] && exit 0
 
-strstr "$ovl_pt" ":" && ovlpath=${ovl_pt##*:}
+strstr "$p_pt" ":" && ovlpath=${p_pt##*:}
 
 devInfo=" $(get_devInfo "$root_pt")"
 # Works for block devices or image files.
@@ -45,7 +45,7 @@ label="${label%%\"*}"
 ln -sf "$root_pt" /run/initramfs/rorootfs
 fstype="${root_ptfsType:-auto}" srcPartition="$root_pt" \
     mountPoint=/run/rootfsbase srcflags="$rflags",ro \
-    fsckoptions="$fsckoptions" mount_partition
+    fsckoptions="$fsckoptions" override=override mount_partition
 local dev mnt
 ln -sf "$(while read -r dev mnt _; do [ "$mnt" = /run/rootfsbase ] \
     && {
