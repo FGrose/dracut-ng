@@ -15,11 +15,13 @@ get_ovl_pt "$OverlayFS" os_rootfs OverlayFS
 [ "$OverlayFS" = off ] && return 0
 
 findmnt "${ovlfs_name:=os_rootfs}" > /dev/null 2>&1 || {
-    [ -h /run/overlayfs ] && getargbool 0 rd.overlay.readonly \
-        && readonly_overlay=--readonly
+    [ -h /run/overlayfs ] && getargbool 0 rd.overlay.readonly && {
+        readonly_overlay=--readonly
+        volatile=volatile
+    }
 
     basedirs=lowerdir="${readonly_overlay:+/run/overlayfs-r:}"/run/rootfsbase
 
     mount -t overlay "$ovlfs_name" \
-        -o "$basedirs",upperdir=/run/overlayfs,workdir=/run/ovlwork "$NEWROOT"
+        -o "${volatile:+volatile,}$basedirs",upperdir=/run/overlayfs,workdir=/run/ovlwork "$NEWROOT"
 }
