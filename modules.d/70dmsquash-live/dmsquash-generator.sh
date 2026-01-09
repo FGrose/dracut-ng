@@ -15,6 +15,7 @@ if OverlayFS="$(getarg rd.overlayfs -d -y rd.live.overlay.overlayfs)"; then
         esac
         ovlfs_name=os_rootfs
     }
+    volatile=volatile
     get_ovl_pt "$OverlayFS" LiveOS_rootfs OverlayFS
     [ "$OverlayFS" = off ] && unset -v 'OverlayFS'
 fi
