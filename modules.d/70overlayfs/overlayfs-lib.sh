@@ -116,10 +116,13 @@ overlayfs_mount_generator() {
         echo Before=initrd-root-fs.target
         echo [Mount]
         echo Where=/sysroot
-        getargbool 0 rd.overlay.readonly && readonly_overlay=--readonly
+        getargbool 0 rd.overlay.readonly && {
+            readonly_overlay=--readonly
+            volatile=volatile
+        }
         basedirs=lowerdir="${readonly_overlay:+/run/overlayfs-r:}"/run/rootfsbase
         echo What="${ovlfs_name:=os_rootfs}"
-        echo Options="${basedirs}",upperdir=/run/overlayfs,workdir=/run/ovlwork
+        echo Options="${volatile:+volatile,}${basedirs}",upperdir=/run/overlayfs,workdir=/run/ovlwork
         echo Type=overlay
     } > "$GENERATOR_DIR"/sysroot.mount
     ovlfs_name=$(echo "$ovlfs_name" | sed 's,/,\\x2f,g;s, ,\\x20,g;s,-,\\x2d,g;')
