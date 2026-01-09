@@ -3,7 +3,7 @@
 
 command -v getarg > /dev/null || . /lib/dracut-lib.sh
 
-if OverlayFS="$(getarg rd.overlay -d -y rd.live.overlay.overlayfs)"; then
+if OverlayFS="$(getarg rd.overlay -d -y rd.live.overlay.overlayfs -d rd.live.overlay)"; then
     load_fstype overlay || Die 'OverlayFS is required but unavailable.'
     command -v get_ovl_pt > /dev/null || . /lib/overlayfs-lib.sh
 
@@ -13,6 +13,7 @@ if OverlayFS="$(getarg rd.overlay -d -y rd.live.overlay.overlayfs)"; then
         '' | 1) OverlayFS=os_rootfs ;;
     esac
     ovlfs_name=os_rootfs
+    volatile=volatile
     get_ovl_pt "$OverlayFS" LiveOS_rootfs OverlayFS
     [ "$OverlayFS" = off ] && unset -v 'OverlayFS'
 fi
