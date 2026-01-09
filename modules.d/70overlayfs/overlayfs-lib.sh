@@ -38,11 +38,13 @@ parse_Args() {
 # Called from overlayfs-generator.sh, dmsquash-generator.sh, & mount-overlayfs.sh
 # [$1 - default ovlfs_name] [$2 - variable name]
 get_ovl_pt() {
+    volatile=volatile
     case "${ovl_pt%%[=/]*}" in
         0 | no | off) eval "$2=off" ;;
         '' | 1) ovlfs_name="${1-os_rootfs}" ;;
         "${ovl_pt%%,*}") ovlfs_name=${ovl_pt%%,*} ;;
         *) # devspec present
+            unset -v 'volatile'
             IFS=, parse_Args "$ovl_pt"
             ;;
     esac
@@ -76,10 +78,13 @@ overlayfs_mount_generator() {
         echo Requires=run-rootfsbase.mount
         echo [Mount]
         echo Where=/sysroot
-        getargbool 0 rd.overlayfs.readonly && readonly_overlay=--readonly
+        getargbool 0 rd.overlayfs.readonly && {
+            readonly_overlay=--readonly
+            volatile=volatile
+        }
         basedirs=lowerdir="${readonly_overlay:+/run/overlayfs-r:}"/run/rootfsbase
         echo What="${ovlfs_name:=os_rootfs}"
-        echo Options="${basedirs}",upperdir=/run/overlayfs,workdir=/run/ovlwork
+        echo Options="${volatile:+volatile,}${basedirs}",upperdir=/run/overlayfs,workdir=/run/ovlwork
         echo Type=overlay
     } > "$GENERATOR_DIR"/sysroot.mount
     ovlfs_name=$(echo "$ovlfs_name" | sed 's,/,\\x2f,g;s, ,\\x20,g;s,-,\\x2d,g;')
