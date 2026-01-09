@@ -1236,7 +1236,9 @@ Enables the use of the *OverlayFS* kernel module ('overlay'), if available,
 to provide a copy-on-write union directory for the root filesystem.
 +
 Apply a temporary OverlayFS overlay to a standard block root partition by
-entering simply **rd.overlay** on the kernel command line.
+entering simply **rd.overlay** on the kernel command line. The OverlayFS will
+be mounted with the 'volatile' mode option avoiding all forms of sync calls to
+the upper filesystem.
 +
 Apply a persistent OverlayFS overlay to a standard block root partition by
 adding the _<devspec>:<pathspec>_ arguments to this parameter.
@@ -1287,10 +1289,11 @@ The creation of a new OverlayFS overlay can be specified by including a new
 
 **rd.overlay.readonly=**1::
 This is used to boot in a read-only mode with a normally read-write persistent
-overlay.  With this option an OverlayFS mount will link the persistent overlay
+overlay.  An OverlayFS mount with this option will link the persistent overlay
 directory to `/run/overlayfs‑r` as an additional read-only lower layer stacked
 under `/run/overlayfs`, the temporary, writable, upper directory overlay and
-over the base root filesystem to complete the bootable root filesystem.
+over the base root filesystem to complete the bootable root filesystem.  This
+parameter will trigger mounting the OverlayFS with the 'volatile' mode option.
 
 **rd.overlay.reset=**1::
 Specifies that a persistent overlay should be reset on boot.  All previous root
@@ -1355,7 +1358,9 @@ For non-persistent OverlayFS overlays, the `/run/overlayfs` directory in the
 `/run` tmpfs is used for temporary storage.  This filesystem is typically sized
 to one half of the RAM total in the system. +
 The command: `mount -o remount,size=<nbytes> /run` will resize this virtual
-filesystem after booting.
+filesystem after booting. +
+Non-persistent OverlayFS mounts will have the 'volatile' mode option applied at
+mount time. This avoids all forms of sync calls to the upper filesystem.
 
 The internal SquashFS or EROFS structure is traditionally expected to be:
 
@@ -1694,8 +1699,9 @@ of the base root filesystem and the persistent overlay,
 * OverlayFS mounts will link the persistent overlay directory at
 `/run/overlayfs‑r` as an additional read-only lower layer stacked over the base
 root filesystem, and `/run/overlayfs` becomes the temporary, writable, upper
-directory overlay, to complete the bootable root filesystem.  In this case the
-dracut 'overlayfs' module is required.
+directory overlay, to complete the bootable root filesystem. This parameter
+will trigger mounting an OverlayFS with the 'volatile' mode option. The dracut
+'overlayfs' module is required here.
 
 **rd.overlay.reset=**1::
 
