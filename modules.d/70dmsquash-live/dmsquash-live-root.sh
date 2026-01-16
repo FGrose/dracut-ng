@@ -124,8 +124,8 @@ case "$livedev_fstype" in
 esac
 
 rd_live_image=$(getarg rd.live.image) && {
-    IFS=, parse_cfgArgs "$rd_live_image"
-    [ "$p_Partition" ] && unset -v 'p_Partition'
+    IFS=, parse_cfgArgs img,"$rd_live_image"
+    [ "$p_pt" ] && unset -v 'p_pt'
     #  Case where partition specification is used for disk specification.
 }
 
@@ -136,7 +136,7 @@ ln -sf "$live_dir" /run/initramfs/live_dir
 [ "$partitionTable" ] || get_partitionTable "$diskDevice"
 
 rd_live_overlay=$(getarg rd.live.overlay) && {
-    IFS=, parse_cfgArgs "$rd_live_overlay"
+    IFS=, parse_cfgArgs ovl,"$rd_live_overlay"
 
     # Set default ovlpath, if not specified.
     [ "$ovlpath" = auto ] && unset -v 'ovlpath'
@@ -152,10 +152,9 @@ case "$cfg" in
     ciso)
         [ "$OverlayFS" ] || ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.live.overlay.overlayfs=${OverlayFS:=LiveOS_rootfs}"
         set_FS_opts "$fsType" p_ptFlags
-        ovl_pt=$p_Partition
         ovl_dir="$live_dir"
-        ln -sf "$ovl_pt" /run/initramfs/ovl_pt
-        fstype="${p_ptfsType:-auto}" srcPartition="$ovl_pt" \
+        ln -sf "$p_pt" /run/initramfs/p_pt
+        fstype="${p_ptfsType:-auto}" srcPartition="$p_pt" \
             mountPoint="$mntDir" srcflags="$p_ptFlags" fsckoptions="$fsckoptions" \
             mount_partition
         install_Image
@@ -256,19 +255,18 @@ esac
 # overlay setup helper function
 do_live_overlay() {
     # need to know where to look for the overlay
-    if [ ! "$setup" ] && [ "$p_Partition" ] && [ "$ovlpath" ]; then
+    if [ ! "$setup" ] && [ "$p_pt" ] && [ "$ovlpath" ]; then
         mkdir -m 0755 -p "${mntDir:=/run/LiveOS_persist}"
-        set -- "$(findmnt -d backward -fnro TARGET "$p_Partition")"
+        set -- "$(findmnt -d backward -fnro TARGET "$p_pt")"
         if [ "$1" ]; then
             [ "$1" = "$mntDir" ] || mount --bind "$1" "$mntDir"
-            # We need $ p_ptwritable for persistent overlay storage.
+            # We need $p_pt writable for persistent overlay storage.
             [ ! -w "$mntDir" ] && [ ! "$readonly_overlay" ] && mount -o remount,rw "$mntDir"
         else
-            ovl_pt=$p_Partition
             ovl_dir="$live_dir"
-            [ "$p_ptFlags" ] || set_FS_opts "${p_ptfsType:=$(blkid --probe --match-tag TYPE --output value --usages filesystem "$ovl_pt")}" p_ptFlags
-            ln -sf "$ovl_pt" /run/initramfs/ovl_pt
-            fstype="${p_ptfsType:-auto}" srcPartition="$ovl_pt" \
+            [ "$p_ptFlags" ] || set_FS_opts "${p_ptfsType:=$(blkid --probe --match-tag TYPE --output value --usages filesystem "$p_pt")}" p_ptFlags
+            ln -sf "$p_pt" /run/initramfs/p_pt
+            fstype="${p_ptfsType:-auto}" srcPartition="$p_pt" \
                 mountPoint="$mntDir" srcflags="$p_ptFlags" fsckoptions="$fsckoptions" \
                 mount_partition
         fi
@@ -295,7 +293,7 @@ do_live_overlay() {
                     ;;
                 *)
                     ## OverlayFS embedded in an image file (needed with vfat formatted devices).
-                    p_Partition=$OVERLAY_LOOPDEV
+                    p_pt=$OVERLAY_LOOPDEV
                     # This leads to an overmount of $mntDir in /sbin/do-overlay
                     ovlpath=/overlayfs
                     live_dir=''
@@ -313,7 +311,7 @@ do_live_overlay() {
     if [ ! "$setup" ] || [ "$readonly_overlay" ]; then
         if [ "$setup" ]; then
             info "Using a temporary overlay."
-        elif [ "$p_Partition" ] && [ "$ovlpath" ]; then
+        elif [ "$p_pt" ] && [ "$ovlpath" ]; then
             prompt_message \
                 '   Unable to find a persistent overlay; using a temporary one.' \
                 '  All root filesystem changes will be lost on shutdown.' \
@@ -494,10 +492,9 @@ if [ "$OverlayFS" ]; then
         OverlayFS="$rd_live_overlay"
         etc_kernel_cmdline="$etc_kernel_cmdline rd.overlayfs=$rd_live_overlay"
     }
-    ovl_pt=$p_Partition
     ovl_dir="$live_dir"
     # Add an OverlayFS for persistent writes.
-    [ "$ovl_pt" ] && do_overlayfs
+    [ "$p_pt" ] && do_overlayfs
 else
     [ "${DRACUT_SYSTEMD-}" ] || printf \
         'mount %s /dev/mapper/live-rw %s\n' "${rflags:+-o $rflags}" "$NEWROOT" \

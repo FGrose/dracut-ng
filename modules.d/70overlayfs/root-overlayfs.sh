@@ -12,14 +12,14 @@ command -v do_overlayfs > /dev/null || . /lib/overlayfs-lib.sh
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
 [ "$1" ] || exit 1
-ovl_pt=$(getarg rd.overlayfs) || exit 0
+p_pt=$(getarg rd.overlayfs) || exit 0
 load_fstype overlay || Die 'OverlayFS is required but unavailable.'
 
 root_pt="$1"
-get_ovl_pt os_rootfs ovl_pt
-[ "$ovl_pt" = off ] && exit 0
+get_p_pt os_rootfs p_pt
+[ "$p_pt" = off ] && exit 0
 
-strstr "$ovl_pt" ":" && ovlpath=${ovl_pt##*:}
+strstr "$p_pt" ":" && ovlpath=${p_pt##*:}
 
 # shellcheck disable=SC2046
 devInfo="
@@ -42,7 +42,7 @@ label="${label%%
 *}"
 
 [ "$volatile" ] || {
-    [ -b "$ovl_pt" ] || Die "$ovl_pt is not available."
+    [ -b "$p_pt" ] || Die "$p_pt is not available."
 
     # Add a mount and directories for OverlayFS persistent writes.
     mntDir=/run/os_persist
