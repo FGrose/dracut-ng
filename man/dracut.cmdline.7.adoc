@@ -1439,7 +1439,7 @@ With argument
 * *_esp[=<sizeMiB>]_* a new EFI System Partition will be created on the boot
 media with the size specified.  The existing ESP will be replaced by a copy in
 a new partition, and the image directory with the boot kernel {`vmlinux|linux`}
-and {`initrd.img|initrd`} files will be copied into the *rd.live.dir=_<path>_*
+and {`initrd.img|initrd`} files will be copied into the *rd.ovl.dir=_<path>_*
 directory of the new ESP.  These files will be bind mounted onto their
 counterparts in the root filesystem /boot/ directory to facilitate programmatic
 updates.  The default *_<sizeMiB>_* is 512 MiB for disks smaller than 32 GiB
@@ -1558,15 +1558,14 @@ Enables debug output from the live boot process.
 **rd.live.check**::
 Requests a CD/DVD/USB media check with checkisomd5.
 
-**rd.live.dir={**__<dirname>__|PROMPT}::
-* *_<dirname>_* specifies the directory within the boot device where the
-squashfs.img or rootfs.img can be found.  By default, this is `LiveOS`.
-+
-This directory name is also used as the parent directory name in the creation
-of a persistent overlay directory.
+**rd.ovl.dir={**__<dirname>__|PROMPT}::
+* *_<dirname>_* specifies the directory within the live device where changes
+to the base root filesystem can be persisted.  This was previously called
+*rd.live.dir*.  In a LiveUSB installation, this is where the root filesystem
+image, squashfs.img or rootfs.img, can be found.  By default, this is `LiveOS`.
 +
 The creation of a new OverlayFS overlay directory can be specified by including
-a new **rd.live.dir=**__<dirname>__ on the kernel commandline.
+a new *rd.ovl.dir=_<dirname>_* on the kernel commandline.
 * *PROMPT* may be entered to invoke an interactive dialog to specify the
 directory name for a new OverlayFS directory.
 
@@ -1583,13 +1582,13 @@ By default, this is __squashfs.img__.
 Copy the complete image to RAM and use this for booting. This is useful
 when the image resides on, _e.g._, a DVD which needs to be ejected later on.
 
-**rd.overlay=**{[{__<size>__|PROMPTSZ}[,{__<fstype>__|PROMPTFS}[,new_pt_for:__<live_dir>__[,recreate[=__<devspec>__][,{__<devspec>__|PROMPTPT|PROMPTDK}[:{__<pathspec>__|auto}[,{iso|ciso}[,ea=__<extra_attr__,__s>__]]]]]]]|none}::
+**rd.overlay=**{[{__<size>__|PROMPTSZ}[,{__<fstype>__|PROMPTFS}[,new_pt_for:__<ovl_dir>__[,recreate[=__<devspec>__][,{__<devspec>__|PROMPTPT|PROMPTDK}[:{__<pathspec>__|auto}[,{iso|ciso}[,ea=__<extra_attr__,__s>__]]]]]]]|none}::
 Manage the specification of a persistent overlay that can be used to save
 changes made to the root filesystem within the +
 **root=**live:__<device specification>__ or **root=**live:__<url>__ device.
 +
 The default _pathspec_, when *:auto* or no **:**__<pathspec>__ is given, is
-`/<rd.live.dir>/overlay-<label>-<uuid>`, where _<label>_ and _<uuid>_ are the
+`/<rd.ovl.dir>/overlay-<label>-<uuid>`, where _<label>_ and _<uuid>_ are the
 LABEL and UUID of the filesystem specified by the
 **root=**live:__<path|url>__ device.
 +
@@ -1625,8 +1624,8 @@ supplied without a *_<devspec>_* argument (such as in a mklabel boot), a commaâ€
 `,`â€”should precede or follow all these arguments to indicate that *_<devspec>_*
 is specified elsewhare.
 +
-* *_new_pt_for:<live_dir>_* specifies that a new persistent OverlayFS directory
-will be created for the existing installation specified by *_<live_dir>_*.  The
+* *_new_pt_for:<ovl_dir>_* specifies that a new persistent OverlayFS directory
+will be created for the existing installation specified by *_<ovl_dir>_*.  The
 new directory will be created in the partitions specified by *_<devspec>_*.  A
 new persistence partition can be specified by omitting *_<devspec>_* or by
 using a *PROMPT__* argument.
@@ -1893,6 +1892,10 @@ UNICODE:: vconsole.unicode (since version 008)
 EXT_KEYMAP:: vconsole.keymap.ext (since version 008)
 
 rd.live.overlay.overlayfs:: rd.overlay (since version 110)
+
+rd.live.dir:: rd.ovl.dir
+
+rd.live.overlay.overlayfs:: rd.overlayfs
 
 rd.live.overlay.readonly:: rd.overlay.readonly (since version 110)
 

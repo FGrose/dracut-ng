@@ -12,96 +12,6 @@ PATH=/usr/sbin:/usr/bin:/sbin:/bin
 [ "$1" ] || exit 1
 root_pt="$1"
 
-# Based on function in partition-lib.sh
-prompt_for_input() {
-    local - obj _list
-    set +x
-    PROMPT='Press <Escape> to toggle menu, then Enter the # for your target here'
-    [ "$PLYMOUTH" ] || _list="
-${warn:+"$warn
-"}$list
-"
-    {
-        flock -s 9
-        while [ "${obj:-#}" = '#' ]; do
-            printf "\033c" > /dev/console
-            dmesg -D
-            if [ "$PLYMOUTH" ]; then
-                IFS='
-' plym_write "${warn:+"$warn
-"}$list
-Press <Escape> to toggle to/from your target selection menu."
-                REPLY=$(plymouth ask-question --prompt="$PROMPT")
-            elif [ "${DRACUT_SYSTEMD-}" ]; then
-                echo "${_list%
-*}" > /dev/console
-                REPLY=$(systemd-ask-password --echo=yes --timeout=0 "${PROMPT#Press <Escape> to toggle menu, then }":)
-            else
-                printf '%s' "${_list}${PROMPT#Press <Escape> to toggle menu, then }: " > /dev/console
-                read -r
-            fi
-            dmesg -E
-            case_block
-            case "$obj" in
-                continue)
-                    unset -v 'obj'
-                    continue
-                    ;;
-            esac
-            end_block
-        done
-    } 9> /.console_lock
-    echo "$obj"
-    objSelected="$obj"
-    return 0
-}
-
-# Prompt for directory contents based on input glob "$@"
-# $1=<header message>
-# $2=<mountpoint directory>[/<directory path>]
-# $3=<input glob> $@
-#  sets variable objSelected
-prompt_for_path() {
-    local - o p i j warn message="$1" dir="$2"
-    set +x
-    list="${message}"
-    shift 2
-    # paths from glob
-    for p; do
-        j=$((j + 1))
-        i=$j
-        if [ "$j" -lt 10 ]; then
-            i=\`\`$i
-        elif [ "$j" -lt 100 ]; then
-            i=\`$i
-        fi
-        p="${p#*"$dir"/}"
-        o="'${p#/}'"
-        list="$list$i - ${o}
-"
-    done
-
-    case_block() {
-        case "$REPLY" in
-            0) obj='../' ;;
-            '' | *[!0-9]* | 0[0-9]*) obj='continue' ;;
-        esac
-    }
-
-    end_block() {
-        if [ "$REPLY" -lt 10 ]; then
-            REPLY=\`\`$REPLY
-        elif [ "$REPLY" -lt 100 ]; then
-            REPLY=\`$REPLY
-        fi
-        obj=${list#*"${REPLY} - '"}
-        obj="${obj%%[\`\'|
-]*}"
-    }
-
-    prompt_for_input
-}
-
 ln -sf "$root_pt" /run/initramfs/rorootfs
 
 # Mount the base root filesystem read-write.
@@ -129,10 +39,12 @@ case "$btrfs_snap" in
 \` #    Snapshot Name
 \`\`0 - 'parent <FS_TREE>'
 "
+        command -v prompt_for_path > /dev/null || . /lib/partition-lib.sh
         plymouth --ping > /dev/null 2>&1 && {
             PLYMOUTH=PLYMOUTH
             . /lib/plymouth-lib.sh
         }
+        echo 'Press <Escape> to toggle menu, then Enter the # for your target here' > /tmp/prompt
         prompt_for_path "$message" /run/rootfsbase/.snapshots /run/rootfsbase/.snapshots/*
         subvol="${objSelected#\'}"
         ;;
@@ -152,14 +64,14 @@ case "$(btrfs property get -ts "$subvol")" in
         # Use OverlayFS mount for read-only snapshot.
         load_fstype overlay || Die 'OverlayFS is required but unavailable.'
 
-        ovl_pt=$(readlink -f /run/initramfs/ovl_pt)
-        if [ -b "$ovl_pt" ]; then
+        p_pt=$(readlink -f /run/initramfs/p_pt)
+        if [ -b "$p_pt" ]; then
             [ "${DRACUT_SYSTEMD-}" ] || {
                 command -v det_fs > /dev/null || . /lib/fs-lib.sh
                 command -v set_FS_opts > /dev/null || . /lib/distribution-lib.sh
-                set_FS_opts "$(det_fs "$ovl_pt")" p_ptFlags
+                set_FS_opts "$(det_fs "$p_pt")" p_ptFlags
             }
-            fstype="$p_ptfsType" srcPartition="$ovl_pt" mountPoint=/run/os_persist \
+            fstype="$p_ptfsType" srcPartition="$p_pt" mountPoint=/run/os_persist \
                 srcflags="$p_ptFlags" mount_partition
         else
             mkdir -p /etc/kernel
