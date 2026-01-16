@@ -85,7 +85,7 @@ get_partitionTable() {
     }
 }
 
-# for partitionTable ptNbr/leading_field_string_pattern=$1
+# for partitionTable {ptNbr|leading_field_string_pattern}=$1
 pt_row() {
     local b
     # shellcheck disable=SC2295 # pattern matching desired
@@ -363,6 +363,49 @@ prompt_for_path() {
         obj=${list#*"${REPLY} - '"}
         obj="${obj%%[\`\'|
 ]*}"
+    }
+    prompt_for_input
+}
+
+# Prompt for directory contents based on input glob "$@"
+# $1=<header message>
+# $2=<mountpoint directory>[/<directory path>]
+# $3=<input glob> $@
+#  sets variable objSelected
+prompt_for_path() {
+    local - o p i j warn message="$1" dir="$2"
+    set +x
+    list="${message}"
+    shift 2
+    # paths from glob
+    for p; do
+        j=$((j + 1))
+        i=$j
+        if [ "$j" -lt 10 ]; then
+            i=\`\`$i
+        elif [ "$j" -lt 100 ]; then
+            i=\`$i
+        fi
+        p="${p#*"$dir"/}"
+        o="'${p#/}'"
+        list="$list$i - ${o}
+"
+    done
+    case_block() {
+        case "$REPLY" in
+            0) obj='../' ;;
+            '' | *[!0-9]* | 0[0-9]*) obj='continue' ;;
+        esac
+    }
+    end_block() {
+        if [ "$REPLY" -lt 10 ]; then
+            REPLY=\`\`$REPLY
+        elif [ "$REPLY" -lt 100 ]; then
+            REPLY=\`$REPLY
+        fi
+        obj=${list#*"${REPLY} - '"}
+        obj="${obj%%[\`\'|
+]*}"
 
 # Prompt for Live directory name
 prompt_for_livedir() {
@@ -494,23 +537,42 @@ Press <Escape> to toggle to/from the partition display."
     return 0
 }
 
+# Call with IFS=, parse_cfgArgs $1="<cfg>,<comma-separated input string>"
+#   $1 becomes $@
 parse_cfgArgs() {
-    local -
+    local - missing_or_auto_case
     set -x
     # shellcheck disable=SC2068
-    set -- $@ # rd_live_overlay
+    set -- $@
     IFS=' 	
 '
+    case "$1" in
+        ovl | img)
+            missing_or_auto_case() {
+                p_ptfsType=${1:-${p_ptfsType:-ext4}}
+            }
+            ;;
+        snp)
+            missing_or_auto_case() {
+                btrfs_snap=auto 
+            }
+            ;;
+    esac
+    shift
     for _; do
         case "$1" in
-            '' | btrfs | ext[432] | f2fs | xfs)
+            btrfs | ext[432] | f2fs | xfs)
                 p_ptfsType=${1:-${p_ptfsType:-ext4}}
                 ;;
+            '' | auto) missing_or_auto_case "$1" ;;
+            r[ow]:?*) btrfs_snap="$1" ;;
+            subvol=?*) subvol=${1#subvol=} ;;
+            subvolid=?*) subvolid=${1#subvolid=} ;;
             recreate=*)
                 removePt="${1#recreate=}"
                 removePt=$(readlink -f "$(label_uuid_to_dev "$removePt")" 2> /dev/kmsg)
                 [ -b "$removePt" ] || {
-                    [ "$p_Partition" ] && removePt="$p_Partition"
+                    [ "$p_pt" ] && removePt="$p_pt"
                 }
                 ;;
             serial=?*)
@@ -523,10 +585,10 @@ parse_cfgArgs() {
                     case "$ptSpec" in
                         *[!0-9]* | 0*)
                             # Anything but a positive integer:
-                            p_Partition=$(label_uuid_to_dev "$ptSpec")
+                            p_pt=$(label_uuid_to_dev "$ptSpec")
                             ;;
                         *)
-                            p_Partition=$(aptPartitionName "$diskDevice" "$partNbr")
+                            p_pt=$(aptPartitionName "$diskDevice" "$partNbr")
                             ;;
                     esac
                 }
@@ -577,8 +639,13 @@ parse_cfgArgs() {
                 ;;
             *[!0-9]* | 0*)
                 # Anything but a positive integer:
-                [ "$1" = auto ] || p_Partition=$(label_uuid_to_dev "${1%%:*}")
-                strstr "$1" ":" && ovlpath=${1##*:}
+                case "$1" in
+                    *=?*)
+                        p_pt="$(label_uuid_to_dev "${1%%:*}")"
+                        strstr "$1" ":" && ovlpath=${1##*:}
+                        ;;
+                    *) ovlfs_name="$1" ;;
+                esac
                 ;;
             *)
                 # any positive integer:
@@ -591,12 +658,12 @@ parse_cfgArgs() {
 
 prep_Partition() {
     local n removePtNbr freeSpaceStart freeSpaceEnd byteMax
-    [ "$p_Partition" ] && ! [ -b "$p_Partition" ] \
-        && Die "The specified persistence partition, $p_Partition, is not recognized."
-    if [ "$p_Partition" ] && ! [ "$removePt" ]; then
+    [ "$p_pt" ] && ! [ -b "$p_pt" ] \
+        && Die "The specified persistence partition, $p_pt, is not recognized."
+    if [ "$p_pt" ] && ! [ "$removePt" ]; then
         info "Skipping overlay creation: a persistence partition already exists."
-        rd_live_overlay="$p_Partition"
-        ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.live.overlay=$ p_ptrd.live.overlay.overlayfs"
+        rd_live_overlay="$p_pt"
+        ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.live.overlay=$p_pt rd.live.overlay.overlayfs"
         return 0
     elif [ ! "$rd_live_overlay" ]; then
         info "Skipping overlay creation: kernel command line parameter 'rd.live.overlay' is not set."
@@ -764,7 +831,7 @@ prep_Partition() {
 
     [ "$roptStart" ] && {
         ro_Partition=$(aptPartitionName "$diskDevice" "$newptNbr")
-        [ "$p_Partition" ] || {
+        [ "$p_pt" ] || {
             newptType=ccea7cb3-70ba-4c31-8455-b906e46a00e2
             # shellcheck disable=SC2086
             run_parted "$diskDevice" \
@@ -774,16 +841,16 @@ prep_Partition() {
         }
     }
 
-    [ "$p_Partition" ] || {
-        p_Partition=$(aptPartitionName "$diskDevice" "$newptNbr")
+    [ "$p_pt" ] || {
+        p_pt=$(aptPartitionName "$diskDevice" "$newptNbr")
 
-        udevadm trigger --name-match "$p_Partition" --action add --settle > /dev/kmsg 2>&1
-        ln -sf "$p_Partition" /run/initramfs/p_pt
+        udevadm trigger --name-match "$p_pt" --action add --settle > /dev/kmsg 2>&1
+        ln -sf "$p_pt" /run/initramfs/p_pt
 
         [ "$p_ptFlags" ] || set_FS_opts "${fsType:-ext4}" p_ptFlags
         mkfs_config "${p_ptfsType:=ext4}" LiveOS_persist $((partitionEnd - partitionStart + 1)) "${extra_attrs}"
-        wipefs --lock -af${QUIET:+q} "$p_Partition"
-        create_Filesystem "$p_ptfsType" "$p_Partition"
+        wipefs --lock -af${QUIET:+q} "$p_pt"
+        create_Filesystem "$p_ptfsType" "$p_pt"
     }
 }
 
@@ -798,7 +865,7 @@ install_Image() {
                 losetup -d /run/initramfs/isoloop
                 umount /run/initramfs/isoscan > /dev/null 2>&1
             }
-            ln -sf "$p_Partition" /run/initramfs/isoscandev
+            ln -sf "$p_pt" /run/initramfs/isoscandev
             [ "${DRACUT_SYSTEMD-}" ] && mount --make-rprivate /run
             loopdev=$(losetup -P -r -f --show "$isofile")
             ln -sf "$loopdev" /run/initramfs/isoloop
@@ -838,7 +905,7 @@ install_Image() {
             # Establish link to rorootfs base partition.
             ln -sf /dev/disk/by-partuuid/"$roPARTUUID" "${mntDir}/${live_dir}"/rorootfs.img
             mount --bind "$mntDir/$live_dir" /run/initramfs/live
-            ln -sf "$p_Partition" /run/initramfs/livedev
+            ln -sf "$p_pt" /run/initramfs/livedev
             rm -- /run/initramfs/isoloop /run/initramfs/isofile /run/initramfs/isoscandev
             ;;
     esac

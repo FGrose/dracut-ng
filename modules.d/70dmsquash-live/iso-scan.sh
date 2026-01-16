@@ -56,6 +56,7 @@ setup_isoloop() {
 \`
 \`           Select the file to be booted.
 \`"
+            echo 'Press <Escape> to toggle menu, then Enter the # for your target here' > /tmp/prompt
             prompt_for_path "$message" /run/initramfs/isoscan"${dir%/}" /run/initramfs/isoscan"${dir%/}"/*.iso
             isofile="${objSelected#* \'}"
             isofile="${dir%/}/${isofile%\'}"
