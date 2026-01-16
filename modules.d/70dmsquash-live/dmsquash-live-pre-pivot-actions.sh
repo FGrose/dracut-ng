@@ -20,14 +20,14 @@ if [ -d /run/initramfs/live/updates ] || [ -d /updates ]; then
     done
 fi
 
-read -r live_dir < /run/initramfs/live_dir
+read -r ovl_dir < /run/initramfs/ovl_dir
 
-getargbool 0 rd.overlayfs && {
+[ -b /run/initramfs/p_pt ] && {
     read -r p_pt_lbl < /run/initramfs/OverlayFS
     p_pt_lbl="${p_pt_lbl%_rootfs}"_persist
     mntDir=/run/"$p_pt_lbl"
 
-    [ -d /run/initramfs/ESP/"$live_dir" ] && {
+    [ -d /run/initramfs/ESP/"$ovl_dir" ] && {
         # Excludes /dev/mapper/live-rw & other traditional installations.
 
         # Readonly boot case:
@@ -39,7 +39,7 @@ getargbool 0 rd.overlayfs && {
         # shellcheck disable=SC2046
         set -- $(uname -rm)
         bkver="$1"
-        if [ -d /run/initramfs/ESP/"$live_dir/${BOOTDIR:=boot/"$2"/loader}" ]; then
+        if [ -d /run/initramfs/ESP/"$ovl_dir/${BOOTDIR:=boot/"$2"/loader}" ]; then
             IMG=initrd
             VM=linux
         else
@@ -47,19 +47,19 @@ getargbool 0 rd.overlayfs && {
             IMG=initrd.img
             VM=vmlinuz
         fi
-        BOOTPATH=/run/initramfs/ESP/"$live_dir/$BOOTDIR"
+        BOOTPATH=/run/initramfs/ESP/"$ovl_dir/$BOOTDIR"
         [ "$ro" ] || mkdir -p "$BOOTPATH"
 
         # Condition on first autopartition boot or new persistent overlay:
-        [ -f /run/initramfs/ESP/"$live_dir"/esp_uuid ] || {
+        [ -f /run/initramfs/ESP/"$ovl_dir"/esp_uuid ] || {
             # Use distribution-specific code to update the boot configuration files.
             command -v update_BootConfig > /dev/null 2>&1 || . /lib/distribution-lib.sh
 
             esp_uuid=$(blkid /run/initramfs/espdev)
             esp_uuid="${esp_uuid#* UUID=\"}"
             esp_uuid="${esp_uuid%%\"*}"
-            echo "$esp_uuid" > /run/initramfs/ESP/"$live_dir"/esp_uuid
-            echo "$esp_uuid" > "$mntDir/$live_dir"/esp_uuid
+            echo "$esp_uuid" > /run/initramfs/ESP/"$ovl_dir"/esp_uuid
+            echo "$esp_uuid" > "$mntDir/$ovl_dir"/esp_uuid
             p_ptUUID=$(blkid /run/initramfs/p_pt)
             p_ptUUID="${p_ptUUID#* UUID=\"}"
             p_ptUUID="${p_ptUUID%%\"*}"
@@ -108,4 +108,3 @@ fi
 # Hide the base rootfs mountpoint.
 umount -l /run/rootfsbase > /dev/null 2>&1
 umount "$NEWROOT"/run
-

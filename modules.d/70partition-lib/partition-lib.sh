@@ -527,6 +527,7 @@ prompt_for_path() {
         obj="${obj%%[\`\'|
 ]*}"
     }
+    prompt_for_input
 }
 
 # Prompt for Live directory name
@@ -838,11 +839,13 @@ prompt_for_boot() {
     return 0
 }
 
+# Call with IFS=, parse_cfgArgs $1="<cfg>,<comma-separated input string>"
+#   $1 becomes $@
 parse_cfgArgs() {
-    local -
+    local - auto_case
     set -x
     # shellcheck disable=SC2068
-    set -- $@ # rd_live_overlay
+    set -- $@
     IFS=' 	
 '
     # Parse key=value pairs from rd.overlay=tmpfs:key=val,
@@ -862,19 +865,46 @@ parse_cfgArgs() {
         esac
         [ "$ovltmpfsopts" ] && echo "$ovltmpfsopts" > /run/initramfs/ovltmpfsopts
     }
-
-    for _; do
+    case "$1" in
+        ovl | img)
+            auto_case() {
+                : ${p_ptfsType:=ext4}
+                OverlayFS=LiveOS_rootfs
+                espStart=1
+            }
+            cfg="$1"
+            ;;
+        snp)
+            auto_case() {
+                btrfs_snap=auto
+            }
+            ;;
+    esac
+    shift
+    [ $# -eq 0 ] && {
+        set -- LiveOS_rootfs
+        unset -v 'cfg'
+    }
+    while [ $# -gt 0 ]; do
         case "$1" in
-            '' | btrfs | ext[432] | f2fs | xfs)
+            btrfs | ext[432] | f2fs | xfs)
                 p_ptfsType=${1:-${p_ptfsType:-ext4}}
                 ;;
+            auto) auto_case ;;
+            r[ow]:?*) btrfs_snap="$1" ;;
             subvol=?*) subvol=${1#subvol=} ;;
             subvolid=?*) subvolid=${1#subvolid=} ;;
+            tmpfs:*)
+                parse_tmpfs_opts "$1"
+                ;;
+            size=* | nr_blocks=* | nr_inodes=*)
+                parse_tmpfs_opts "$1"
+                ;;
             recreate=*)
                 removePt="${1#recreate=}"
                 removePt=$(readlink -f "$(label_uuid_to_dev "$removePt")" 2> /dev/kmsg)
                 [ -b "$removePt" ] || {
-                    [ "$p_Partition" ] && removePt="$p_Partition"
+                    [ "$p_pt" ] && removePt="$p_pt"
                 }
                 ;;
             serial=?*)
@@ -887,10 +917,10 @@ parse_cfgArgs() {
                     case "$ptSpec" in
                         *[!0-9]* | 0*)
                             # Anything but a positive integer:
-                            p_Partition=$(label_uuid_to_dev "$ptSpec")
+                            p_pt=$(label_uuid_to_dev "$ptSpec")
                             ;;
                         *)
-                            p_Partition=$(aptPartitionName "$diskDevice" "$partNbr")
+                            p_pt=$(aptPartitionName "$diskDevice" "$partNbr")
                             ;;
                     esac
                 }
@@ -903,10 +933,6 @@ parse_cfgArgs() {
                 ;;
             ropt)
                 cfg="$1"
-                ;;
-            auto)
-                espStart=1
-                cfg=ovl
                 ;;
             iso | ciso)
                 cfg="$1"
@@ -941,30 +967,36 @@ parse_cfgArgs() {
             PROMPTDR)
                 [ "$SYSTEMD_IN_INITRD" = 1 ] || prompt_for_path "$1"
                 ;;
-            PROMPTSZ)
-                # Assigns sizeGiB.
-                [ "$SYSTEMD_IN_INITRD" = 1 ] || prompt_for_size "$1"
-                ;;
             PROMPTFS)
                 # Assigns fsType and rootflags.
                 [ "$SYSTEMD_IN_INITRD" = 1 ] || prompt_for_fstype
+                ;;
+            PROMPTSZ)
+                # Assigns sizeGiB.
+                [ "$SYSTEMD_IN_INITRD" = 1 ] || prompt_for_size
+                ;;
+            [1-9][Gg] | [1-9][0-9][Gg] | [1-9][0-9][0-9][MmGg] | [1-9][0-9][0-9][0-9][MmGg])
+                size="$1"
                 ;;
             *[!0-9]* | 0*)
                 # Anything but a positive integer:
                 case "$1" in
                     *=?*)
-                        ovl_pt="$(label_uuid_to_dev "${1%%:*}")"
-                         strstr "$1" ":" && {
-                             ovlpath=${1##*:}
+                        unset -v 'volatile'
+                        p_pt="$(label_uuid_to_dev "${1%%:*}")"
+                        ln -sf "$p_pt" /run/initramfs/p_pt
+                        unset -v 'cfg'
+                        strstr "$1" ":" && {
+                            ovlpath=${1##*:}
                             echo "$ovlpath" > /run/initramfs/ovlpath
-                         }
+                        }
                         ;;
                     *) OverlayFS="$1" ;;
                 esac
                 ;;
             *)
                 # any positive integer:
-                sizeGiB=$1
+                size=$1
                 ;;
         esac
         shift
@@ -1116,10 +1148,14 @@ prep_Partition() {
         warn "Skipping partition creation: less than 256 MiB of space is available."
         return 1
     fi
-    
-    [ "$ovl_pt" ] && {
-        sizeGiB=${sizeGiB:+$((sizeGiB << 30))}
-        partitionEnd="$((partitionStart + ${sizeGiB:-$szDisk} - 512))"
+
+    [ "$p_pt" ] && {
+        case "$size" in
+            *[Mm]) size=$((${size%[Mm]} << 20)) ;;
+            *) size=$((${size%[Gg]} << 30)) ;; # Default
+        esac
+        size=${size:+$size}
+        partitionEnd="$((partitionStart + ${size:-$szDisk} - 512))"
         optimize "$partitionEnd" partitionEnd
         [ "$partitionEnd" -gt "$freeSpaceEnd" ] && partitionEnd="$freeSpaceEnd"
 
@@ -1128,7 +1164,7 @@ prep_Partition() {
 
         newptCmd="--align optimal mkpart ${ovl_dir}.. ${partitionStart}B ${partitionEnd}B \
             ${mklabel:+type ${newptNbr:=3} $p_ptType set 3 no_automount on}"
-        [ "$mklabel" ] && p_Partition=$(aptPartitionName "$diskDevice" 3)
+        [ "$mklabel" ] && p_pt=$(aptPartitionName "$diskDevice" 3)
     }
 
     # shellcheck disable=SC2086
@@ -1156,21 +1192,23 @@ prep_Partition() {
         }
     }
 
-    [ "$p_Partition" ] || {
+    [ "$p_pt" ] || {
         [ "$mklabel" ] || {
             newptType="$p_ptType" set_pt_type $newptCmd
-            p_Partition=$(aptPartitionName "$diskDevice" "$newptNbr")
+            p_pt=$(aptPartitionName "$diskDevice" "$newptNbr")
         }
     }
 
-    [ "$ovl_pt" ] && {
-        udevadm trigger --name-match "$p_Partition" --action add --settle > /dev/kmsg 2>&1
-        ln -sf "$p_Partition" /run/initramfs/p_pt
+    [ "$p_pt" ] && {
+        p_pt=$(aptPartitionName "$diskDevice" "$newptNbr")
+
+        udevadm trigger --name-match "$p_pt" --action add --settle > /dev/kmsg 2>&1
+        ln -sf "$p_pt" /run/initramfs/p_pt
 
         [ "${p_ptFlags+set}" ] || set_FS_options "${p_ptfsType:-ext4}" p_ptFlags
         mkfs_config "${p_ptfsType:=ext4}" "${OverlayFS%_rootfs}"_persist $((partitionEnd - partitionStart + 1)) "${extra_attrs}"
-        wipefs --lock -af${QUIET:+q} "$p_Partition"
-        create_Filesystem "$p_ptfsType" "$p_Partition"
+        wipefs --lock -af${QUIET:+q} "$p_pt"
+        create_Filesystem "$p_ptfsType" "$p_pt"
     }
 }
 
@@ -1213,7 +1251,7 @@ install_Image() {
             # Save path to rorootfs base partition.
             echo /dev/disk/by-partuuid/"$roPARTUUID" > /run/initramfs/ESP/"$ovl_dir"/rorootfs.img
             # Set ovlpath.
-            ovlpath="/${live_dir}/overlay-${label}-$roPARTUUID"
+            ovlpath="/${ovl_dir}/overlay-${label}-$roPARTUUID"
             echo "$ovlpath" > /run/initramfs/ovlpath
             ;;
         ropt_2)

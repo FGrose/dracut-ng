@@ -30,7 +30,7 @@ client_run() {
 
     "$testdir"/run-qemu \
         "${disk_args[@]}" \
-        -append "$TEST_KERNEL_CMDLINE rd.overlay root=live:/dev/disk/by-label/dracut $client_opts" \
+        -append "$TEST_KERNEL_CMDLINE rd.overlay=1 root=live:/dev/disk/by-label/dracut $client_opts" \
         -initrd "$TESTDIR"/initramfs.testing
     check_qemu_log
 
@@ -68,7 +68,7 @@ test_run() {
     client_run "overlayfs" ""
 
     client_run "live" "rd.live.image"
-    client_run "livedir" "rd.live.image rd.live.dir=LiveOS"
+    client_run "livedir" "rd.live.image rd.ovl.dir=LiveOS"
 
     # Run the erofs test only if mkfs.erofs is available
     if command -v mkfs.erofs &> /dev/null; then

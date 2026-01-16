@@ -69,6 +69,11 @@ GENERATOR_DIR="$2"
 [ "$GENERATOR_DIR" ] || exit 1
 [ -d "$GENERATOR_DIR" ] || mkdir -p "$GENERATOR_DIR"
 
+command -v get_rd_overlay > /dev/null || . /lib/overlayfs-lib.sh
+generator=generator
+# Set p_pt, p_ptfstype, size; toggle volatile.
+get_rd_overlay LiveOS_rootfs
+
 rfstype="$(getarg rootfstype=)"
 rflags="$(getarg rootflags=)"
 
