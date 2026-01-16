@@ -2,7 +2,7 @@
 # overlayfs-lib.sh: utilities for OverlayFS use
 
 command -v getarg > /dev/null || . /lib/dracut-lib.sh
-command -v set_FS_options > /dev/null || . /lib/partition-lib.sh
+command -v parse_cfgArgs > /dev/null || . /lib/partition-lib.sh
 
 # Fetch non-boolean values for rd.overlay or fall back to rd.live.overlay
 # $1 - $OverlayFS - OverlayFS mount source name default.
@@ -42,13 +42,16 @@ get_rd_overlay() {
     }
     echo "$OverlayFS" > /run/initramfs/OverlayFS
     : "${p_pt_lbl:="${OverlayFS%_rootfs}"_persist}"
+    strstr "$rd_overlay" PROMPT && {
+        unset -v 'volatile'
+        p_pt=/dev/disk/by-label/"$p_pt_lbl"
+    }
     [ "$SYSTEMD_IN_INITRD" = 1 ] && [ "$p_pt" ] && echo "$p_pt" > /run/systemd/generator.early/p_pt
     [ "$volatile" ] || [ "${p_ptFlags+set}" ] || set_FS_options "$p_ptfsType" p_ptFlags
     getargbool 0 rd.overlay.reset -d -y rd.live.overlay.reset && ln -sf yes /run/initramfs/reset_ovl
     getargbool 0 rd.overlay.readonly -d -y rd.live.overlay.readonly && {
         readonly_overlay=--readonly
         volatile=volatile
-        ln -sf readonly /run/initramfs/ro_ovl
     }
 }
 
@@ -151,16 +154,17 @@ do_overlayfs() {
     local mount_unit=/run/systemd/generator.early/run-"${mntDir##*/}".mount
     set -- "$(get_mountpoint)"
     if [ "$1" ]; then
-        # We need $ovl_pt writable for overlay storage
+        # We need $p_pt writable for overlay storage
         [ ! -w "$mntDir" ] && [ ! "$readonly_overlay" ] && mount -o remount,rw "$mntDir"
     else
+        [ "$p_ptFlags" ] || set_FS_options "${p_ptfsType:=$(det_fs "$p_pt")}" p_ptFlags
+        p_pt=$(readlink -f "$p_pt")
+        ln -sf "$p_pt" /run/initramfs/p_pt
         [ -f "$mount_unit" ] && {
             echo "Options=$p_ptFlags
 Type=${p_ptfsType:-auto}" >> "$mount_unit"
         }
-        [ "$p_ptFlags" ] || set_FS_options "${p_ptfsType:=$(det_fs "$p_pt")}" p_ptFlags
-        ln -sf "$ovl_pt" /run/initramfs/ovl_pt
-        fstype="${p_ptfsType:-auto}" srcPartition="$ovl_pt" \
+        fstype="${p_ptfsType:-auto}" srcPartition="$p_pt" \
             mountPoint="$mntDir" srcflags="$p_ptFlags" fsckoptions="$fsckoptions" \
             mount_partition
     fi
@@ -180,7 +184,7 @@ Type=${p_ptfsType:-auto}" >> "$mount_unit"
     if [ "$readonly_overlay" ]; then
         if [ "$setup" ]; then
             info "Using a temporary overlay."
-        elif [ "$ovl_pt" ] && [ "$ovlpath" ]; then
+        elif [ "$p_pt" ] && [ "$ovlpath" ]; then
             prompt_message \
                 '   Unable to find a persistent overlay; using a temporary one.' \
                 '  All root filesystem changes will be lost on shutdown.' \

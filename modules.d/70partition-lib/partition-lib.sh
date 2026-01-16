@@ -527,6 +527,7 @@ prompt_for_path() {
         obj="${obj%%[\`\'|
 ]*}"
     }
+    prompt_for_input
 }
 
 # Prompt for Live directory name
@@ -838,11 +839,13 @@ prompt_for_boot() {
     return 0
 }
 
+# Call with IFS=, parse_cfgArgs $1="<cfg>,<comma-separated input string>"
+#   $1 becomes $@
 parse_cfgArgs() {
-    local -
+    local - auto_case
     set -x
     # shellcheck disable=SC2068
-    set -- $@ # rd_live_overlay
+    set -- $@
     IFS=' 	
 '
     # Parse key=value pairs from rd.overlay=tmpfs:key=val,
@@ -862,19 +865,46 @@ parse_cfgArgs() {
         esac
         [ "$ovltmpfsopts" ] && echo "$ovltmpfsopts" > /run/initramfs/ovltmpfsopts
     }
-
-    for _; do
+    case "$1" in
+        ovl | img)
+            auto_case() {
+                : ${p_ptfsType:=ext4}
+                OverlayFS=LiveOS_rootfs
+                espStart=1
+            }
+            cfg="$1"
+            ;;
+        snp)
+            auto_case() {
+                btrfs_snap=auto
+            }
+            ;;
+    esac
+    shift
+    [ $# -eq 0 ] && {
+        set -- LiveOS_rootfs
+        unset -v 'cfg'
+    }
+    while [ $# -gt 0 ]; do
         case "$1" in
-            '' | btrfs | ext[432] | f2fs | xfs)
+            btrfs | ext[432] | f2fs | xfs)
                 p_ptfsType=${1:-${p_ptfsType:-ext4}}
                 ;;
+            auto) auto_case ;;
+            r[ow]:?*) btrfs_snap="$1" ;;
             subvol=?*) subvol=${1#subvol=} ;;
             subvolid=?*) subvolid=${1#subvolid=} ;;
+            tmpfs:*)
+                parse_tmpfs_opts "$1"
+                ;;
+            size=* | nr_blocks=* | nr_inodes=*)
+                parse_tmpfs_opts "$1"
+                ;;
             recreate=*)
                 removePt="${1#recreate=}"
                 removePt=$(readlink -f "$(label_uuid_to_dev "$removePt")" 2> /dev/kmsg)
                 [ -b "$removePt" ] || {
-                    [ "$p_Partition" ] && removePt="$p_Partition"
+                    [ "$p_pt" ] && removePt="$p_pt"
                 }
                 ;;
             serial=?*)
@@ -887,10 +917,10 @@ parse_cfgArgs() {
                     case "$ptSpec" in
                         *[!0-9]* | 0*)
                             # Anything but a positive integer:
-                            p_Partition=$(label_uuid_to_dev "$ptSpec")
+                            p_pt=$(label_uuid_to_dev "$ptSpec")
                             ;;
                         *)
-                            p_Partition=$(aptPartitionName "$diskDevice" "$partNbr")
+                            p_pt=$(aptPartitionName "$diskDevice" "$partNbr")
                             ;;
                     esac
                 }
@@ -903,10 +933,6 @@ parse_cfgArgs() {
                 ;;
             ropt)
                 cfg="$1"
-                ;;
-            auto)
-                espStart=1
-                cfg=ovl
                 ;;
             iso | ciso)
                 cfg="$1"
@@ -941,27 +967,36 @@ parse_cfgArgs() {
             PROMPTDR)
                 [ "$SYSTEMD_IN_INITRD" = 1 ] || prompt_for_path "$1"
                 ;;
-            PROMPTSZ)
-                # Assigns sizeGiB.
-                [ "$SYSTEMD_IN_INITRD" = 1 ] || prompt_for_size "$1"
-                ;;
             PROMPTFS)
                 # Assigns fsType and rootflags.
                 [ "$SYSTEMD_IN_INITRD" = 1 ] || prompt_for_fstype
+                ;;
+            PROMPTSZ)
+                # Assigns sizeGiB.
+                [ "$SYSTEMD_IN_INITRD" = 1 ] || prompt_for_size
+                ;;
+            [1-9][Gg] | [1-9][0-9][Gg] | [1-9][0-9][0-9][MmGg] | [1-9][0-9][0-9][0-9][MmGg])
+                size="$1"
                 ;;
             *[!0-9]* | 0*)
                 # Anything but a positive integer:
                 case "$1" in
                     *=?*)
-                        ovl_pt="$(label_uuid_to_dev "${1%%:*}")"
-                        strstr "$1" ":" && ovlpath=${1##*:}
+                        unset -v 'volatile'
+                        p_pt="$(label_uuid_to_dev "${1%%:*}")"
+                        ln -sf "$p_pt" /run/initramfs/p_pt
+                        unset -v 'cfg'
+                        strstr "$1" ":" && {
+                            ovlpath=${1##*:}
+                            ln -sf "$ovlpath" /run/initramfs/ovlpath
+                        }
                         ;;
                     *) OverlayFS="$1" ;;
                 esac
                 ;;
             *)
                 # any positive integer:
-                sizeGiB=$1
+                size=$1
                 ;;
         esac
         shift
@@ -1091,7 +1126,7 @@ prep_Partition() {
             roptStart=$partitionStart
             partitionStart=$((roptStart + sz + 1))
             optimize "$partitionStart" partitionStart
-            roptCmd="--align optimal mkpart $live_dir ${roptStart}B $((partitionStart - 1))B"
+            roptCmd="--align optimal mkpart $ovl_dir ${roptStart}B $((partitionStart - 1))B"
             espEnd=$((roptStart - 1))
             ;;
     esac
@@ -1101,8 +1136,12 @@ prep_Partition() {
         warn "Skipping partition creation: less than 256 MiB of space is available."
         return 1
     fi
-    sizeGiB=${sizeGiB:+$((sizeGiB << 30))}
-    partitionEnd="$((partitionStart + ${sizeGiB:-$szDisk} - 512))"
+    case "$size" in
+        *[Mm]) size=$((${size%[Mm]} << 20)) ;;
+        *) size=$((${size%[Gg]} << 30)) ;; # Default
+    esac
+    size=${size:+$size}
+    partitionEnd="$((partitionStart + ${size:-$szDisk} - 512))"
     [ "$partitionEnd" -gt "$freeSpaceEnd" ] && partitionEnd="$freeSpaceEnd"
     newptCmd="--align optimal mkpart ${ovl_dir}.. ${partitionStart}B ${partitionEnd}B"
 
@@ -1132,16 +1171,28 @@ prep_Partition() {
     # shellcheck disable=SC2086
     set_pt_type $newptCmd
 
-    [ "$p_Partition" ] || {
-        p_Partition=$(aptPartitionName "$diskDevice" "$newptNbr")
+    [ "$roptStart" ] && {
+        ro_Partition=$(aptPartitionName "$diskDevice" "$newptNbr")
+        [ "$p_pt" ] || {
+            newptType=ccea7cb3-70ba-4c31-8455-b906e46a00e2
+            # shellcheck disable=SC2086
+            run_parted "$diskDevice" \
+                $newptCmd
+            # shellcheck disable=SC2086
+            set_pt_type $newptCmd
+        }
+    }
 
-        udevadm trigger --name-match "$p_Partition" --action add --settle > /dev/kmsg 2>&1
-        ln -sf "$p_Partition" /run/initramfs/p_pt
+    [ "$p_pt" ] || {
+        p_pt=$(aptPartitionName "$diskDevice" "$newptNbr")
+
+        udevadm trigger --name-match "$p_pt" --action add --settle > /dev/kmsg 2>&1
+        ln -sf "$p_pt" /run/initramfs/p_pt
 
         [ "${p_ptFlags+set}" ] || set_FS_options "${p_ptfsType:-ext4}" p_ptFlags
-        mkfs_config "${p_ptfsType:=ext4}" LiveOS_persist $((partitionEnd - partitionStart + 1)) "${extra_attrs}"
-        wipefs --lock -af${QUIET:+q} "$p_Partition"
-        create_Filesystem "$p_ptfsType" "$p_Partition"
+        mkfs_config "${p_ptfsType:=ext4}" "${OverlayFS%_rootfs}"_persist $((partitionEnd - partitionStart + 1)) "${extra_attrs}"
+        wipefs --lock -af${QUIET:+q} "$p_pt"
+        create_Filesystem "$p_ptfsType" "$p_pt"
     }
 }
 
@@ -1184,23 +1235,23 @@ install_Image() {
             fi
             ln -sf "$roPARTUUID" /run/initramfs/live_partuuid
             # Set ovlpath.
-            ovlpath="/${live_dir}/overlay-${label}-$roPARTUUID"
+            ovlpath="/${ovl_dir}/overlay-${label}-$roPARTUUID"
             uuid=$roPARTUUID
             ;;
         ropt_2)
             cd /run/initramfs/live"${base_dir:+/$base_dir}" || Die "Unable to change directory to /run/initramfs/live${base_dir:+/$base_dir}"
             # Copy source image minus LiveOS directory and any overlay.
             find . -type f \! -path ./LiveOS -prune \! -path ./overlay-\* -prune \
-                \! -path ./ovlwork -prune \! -name squashfs.img -prune \! -name rorootfs.img -prune | cpio -p -dum --quiet "$mntDir/$live_dir"/.
+                \! -path ./ovlwork -prune \! -name squashfs.img -prune \! -name rorootfs.img -prune | cpio -p -dum --quiet "$mntDir/$ovl_dir"/.
             cd - || Die "Problem changing directory from /run/initramfs/live${base_dir:+/$base_dir}"
             umount -d /run/initramfs/live
             losetup -d /run/initramfs/isoloop
             umount /run/initramfs/isoscan
             rmdir /run/initramfs/isoscan
             # Establish link to rorootfs base partition.
-            ln -sf /dev/disk/by-partuuid/"$roPARTUUID" "${mntDir}/${live_dir}"/rorootfs.img
-            mount --bind "$mntDir/$live_dir" /run/initramfs/live
-            ln -sf "$p_Partition" /run/initramfs/livedev
+            ln -sf /dev/disk/by-partuuid/"$roPARTUUID" "${mntDir}/${ovl_dir}"/rorootfs.img
+            mount --bind "$mntDir/$ovl_dir" /run/initramfs/live
+            ln -sf "$p_pt" /run/initramfs/livedev
             rm -- /run/initramfs/isoloop /run/initramfs/isofile /run/initramfs/isoscandev
             ;;
     esac
