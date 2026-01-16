@@ -14,7 +14,6 @@ PATH=/usr/sbin:/usr/bin:/sbin:/bin
 [ "$1" ] || exit 1
 p_pt=$(getarg rd.overlay) || exit 0
 load_fstype overlay || die 'OverlayFS is required but unavailable.'
-
 root_pt="$1"
 get_ovl_pt os_rootfs p_pt
 [ "$p_pt" = off ] && exit 0

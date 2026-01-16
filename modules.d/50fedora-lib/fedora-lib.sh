@@ -152,7 +152,7 @@ s/\s+(quiet|rhgb|splash)\s+(quiet|rhgb|splash)\s+/ /
     esac
     cfgargs="${ROOTFLAGS:+ rootflags=$ROOTFLAGS}"
     cfgargs="$(escape "$cfgargs")"
-    rootcfg="$rootcfg${_live_dir:+ rd.live.dir=$_live_dir}"
+    rootcfg="$rootcfg${_ovl_dir:+ rd.ovl.dir=$_ovl_dir}"
     rootcfg="$(escape "$rootcfg")"
     [ "$IMG" = initrd.img ] && IMG=initrd*.img
 

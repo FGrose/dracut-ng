@@ -13,8 +13,8 @@ KERNEL_VERSION="$1"
 [ "$KERNEL_VERSION" = "$lkver" ] || {
     # If the current kernel version is not the latest..
     echo "Updating the ESP with the latest kernel and initramfs." > /dev/kmsg
-    live_dir=$(readlink /run/initramfs/live_dir)
-    if [ -d /run/initramfs/ESP/"$live_dir/${BOOTDIR:=boot/"$2"/loader}" ]; then
+    ovl_dir=$(readlink /run/initramfs/ovl_dir)
+    if [ -d /run/initramfs/ESP/"$ovl_dir/${BOOTDIR:=boot/"$2"/loader}" ]; then
         IMG=initrd
         VM=linux
     else
@@ -23,7 +23,7 @@ KERNEL_VERSION="$1"
         VM=vmlinuz
     fi
     umount /boot > /dev/kmsg 2>&1
-    for _ in "${BOOTPATH:=/run/initramfs/ESP/$live_dir/$BOOTDIR}/initramfs-$KERNEL_VERSION".img\
+    for _ in "${BOOTPATH:=/run/initramfs/ESP/$ovl_dir/$BOOTDIR}/initramfs-$KERNEL_VERSION".img\
              "$BOOTPATH/vmlinuz-$KERNEL_VERSION"; do
         umount "$_"
         rm "$_"
@@ -40,6 +40,6 @@ KERNEL_VERSION="$1"
 
     # Update menu items requiring old kernel images.
     cp -a "${GRUB_cfg:=/run/initramfs/ESP/EFI/BOOT/grub.cfg}" "$GRUB_cfg".prev_kernel
-    sed -i -r "s/(^\s*menu_item\s+'(Start|Make|Format|Reset) (t|a).*\s+').*('\s+.*'$live_dir.*)/\1$okver\4/" "$GRUB_cfg"
+    sed -i -r "s/(^\s*menu_item\s+'(Start|Make|Format|Reset) (t|a).*\s+').*('\s+.*'$ovl_dir.*)/\1$okver\4/" "$GRUB_cfg"
     umount /run/initramfs/ESP > /dev/kmsg 2>&1
 }

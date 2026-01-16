@@ -20,10 +20,10 @@ fi
 
 getargbool 0 rd.overlayfs && {
     mntDir=/run/LiveOS_persist
-    live_dir=$(readlink /run/initramfs/live_dir)
+    ovl_dir=$(readlink /run/initramfs/ovl_dir)
 
-    [ -f "$mntDir/$live_dir"/esp_uuid ] && {
-        read -r esp_uuid < "$mntDir/$live_dir"/esp_uuid
+    [ -f "$mntDir/$ovl_dir"/esp_uuid ] && {
+        read -r esp_uuid < "$mntDir/$ovl_dir"/esp_uuid
         ln -sf /dev/disk/by-uuid/"$esp_uuid" /run/initramfs/espdev
     }
 
@@ -39,7 +39,7 @@ getargbool 0 rd.overlayfs && {
         # shellcheck disable=SC2046
         set -- $(uname -rm)
         bkver="$1"
-        if [ -d /run/initramfs/ESP/"$live_dir/${BOOTDIR:=boot/"$2"/loader}" ]; then
+        if [ -d /run/initramfs/ESP/"$ovl_dir/${BOOTDIR:=boot/"$2"/loader}" ]; then
             IMG=initrd
             VM=linux
         else
@@ -47,19 +47,19 @@ getargbool 0 rd.overlayfs && {
             IMG=initrd.img
             VM=vmlinuz
         fi
-        BOOTPATH=/run/initramfs/ESP/"$live_dir/$BOOTDIR"
+        BOOTPATH=/run/initramfs/ESP/"$ovl_dir/$BOOTDIR"
         [ "$ro" ] || mkdir -p "$BOOTPATH"
 
         # Condition on first autopartition boot or new persistent overlay:
-        [ -f /run/initramfs/ESP/"$live_dir"/esp_uuid ] || {
+        [ -f /run/initramfs/ESP/"$ovl_dir"/esp_uuid ] || {
             # Use distribution-specific code to update the boot configuration files.
             type update_BootConfig > /dev/null 2>&1 || . /lib/distribution-lib.sh
 
             esp_uuid=$(blkid /run/initramfs/espdev)
             esp_uuid="${esp_uuid#* UUID=\"}"
             esp_uuid="${esp_uuid%%\"*}"
-            echo "$esp_uuid" > /run/initramfs/ESP/"$live_dir"/esp_uuid
-            echo "$esp_uuid" > "$mntDir/$live_dir"/esp_uuid
+            echo "$esp_uuid" > /run/initramfs/ESP/"$ovl_dir"/esp_uuid
+            echo "$esp_uuid" > "$mntDir/$ovl_dir"/esp_uuid
             update_BootConfig
             for _ in "$BOOTPATH/initramfs-$bkver.img" "$BOOTPATH/vmlinuz-$bkver"; do
                 # Zero-size these files.
@@ -76,7 +76,7 @@ getargbool 0 rd.overlayfs && {
         mount --bind "$BOOTPATH" "$NEWROOT"/boot
 
         [ "$ro" ] || {
-            sync -f /run/initramfs/ESP/"$live_dir"
+            sync -f /run/initramfs/ESP/"$ovl_dir"
             flock /run/initramfs/espdev fsck.fat -aV${VERBOSE:+v} /run/initramfs/espdev 2>&1
         }
     }
