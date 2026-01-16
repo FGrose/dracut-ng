@@ -5,9 +5,9 @@ command -v getarg > /dev/null || . /lib/dracut-lib.sh
 
 if OverlayFS="$(getarg rd.overlayfs -d -y rd.live.overlay.overlayfs)"; then
     load_fstype overlay || Die 'OverlayFS is required but unavailable.'
-    command -v get_ovl_pt > /dev/null || . /lib/overlayfs-lib.sh
-    ovl_pt=$(getarg rd.live.overlay -d overlay) || {
-        ovl_pt="$OverlayFS"
+    command -v get_p_pt > /dev/null || . /lib/overlayfs-lib.sh
+    p_pt=$(getarg rd.live.overlay -d overlay) || {
+        p_pt="$OverlayFS"
         # For legacy case of using dmsquash-live for an OverlayFS on a regular
         #   block root device:
         case "${OverlayFS%%[=/]*}" in
@@ -16,7 +16,7 @@ if OverlayFS="$(getarg rd.overlayfs -d -y rd.live.overlay.overlayfs)"; then
         ovlfs_name=os_rootfs
     }
     volatile=volatile
-    get_ovl_pt "$OverlayFS" LiveOS_rootfs OverlayFS
+    get_p_pt "$OverlayFS" LiveOS_rootfs OverlayFS
     [ "$OverlayFS" = off ] && unset -v 'OverlayFS'
 fi
 
