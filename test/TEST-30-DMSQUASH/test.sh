@@ -68,7 +68,7 @@ test_run() {
     client_run "overlayfs" ""
 
     client_run "live" "rd.live.image"
-    client_run "livedir" "rd.live.image rd.live.dir=LiveOS"
+    client_run "livedir" "rd.live.image rd.ovl.dir=LiveOS"
 
     # Run the erofs test only if mkfs.erofs is available
     if command -v mkfs.erofs &> /dev/null; then
