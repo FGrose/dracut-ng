@@ -2,8 +2,8 @@
 
 [ "$RD_DEBUG" = yes ] && set -x
 PS4='+ $(read -r u _ </proc/uptime; echo "$u") ${BASH_SOURCE-$0}@$LINENO${FUNCNAME:+ $FUNCNAME()}: '
-command -v getarg > /dev/null || . /lib/dracut-lib.sh
-command -v mount_partition > /dev/null || . /lib/partition-lib.sh
+command -v ismounted > /dev/null || . /lib/dracut-lib.sh
+command -v prompt_for_device > /dev/null || . /lib/partition-lib.sh
 command -v get_rd_overlay > /dev/null || . /lib/overlayfs-lib.sh
 
 PATH=/usr/sbin:/usr/bin:/sbin:/bin

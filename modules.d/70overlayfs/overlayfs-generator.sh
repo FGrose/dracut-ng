@@ -4,7 +4,7 @@
 command -v get_rd_overlay > /dev/null || . /lib/overlayfs-lib.sh
 
 btrfs_snap="$(getarg rd.btrfs.snapshot)" && {
-    IFS=, parse_Args "${btrfs_snap:=auto}"
+    IFS=, parse_cfgArgs snp,"${btrfs_snap:=auto}"
     ln -s "$btrfs_snap" /run/initramfs/btrfs_snap
     : "${OverlayFS:=os_snapfs}"
 }
