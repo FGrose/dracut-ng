@@ -4,19 +4,19 @@
 command -v getarg > /dev/null || . /lib/dracut-lib.sh
 
 btrfs_snap="$(getarg rd.btrfs.snapshot)" && {
-    command -v parse_Args > /dev/null || . /lib/overlayfs-lib.sh
-    IFS=, parse_Args "${btrfs_snap:=auto}"
+    command -v get_p_pt > /dev/null || . /lib/overlayfs-lib.sh
+    IFS=, parse_cfgArgs snp,"${btrfs_snap:=auto}"
     ln -s "$btrfs_snap" /run/initramfs/btrfs_snap
     : "${ovlfs_name:=os_snapfs}"
 }
-ovl_pt="$(getarg rd.overlay)" || [ "$btrfs_snap" ] || exit 0
+p_pt="$(getarg rd.overlay)" || [ "$btrfs_snap" ] || exit 0
 
 load_fstype overlay || Die 'OverlayFS is required but unavailable.'
-command -v get_ovl_pt > /dev/null || . /lib/overlayfs-lib.sh
+command -v get_p_pt > /dev/null || . /lib/overlayfs-lib.sh
 
 volatile=volatile
-[ "$ovl_pt" ] && get_ovl_pt "$ovl_pt" "${ovlfs_name:=os_rootfs}" ovl_pt
-[ "$ovl_pt" = off ] && exit 0
+[ "$p_pt" ] && get_p_pt "$p_pt" "${ovlfs_name:=os_rootfs}" p_pt
+[ "$p_pt" = off ] && exit 0
 
 [ "$root" ] || root=$(getarg root=)
 case "$root" in
