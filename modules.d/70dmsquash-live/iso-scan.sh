@@ -70,6 +70,8 @@ setup_isoloop() {
     loopdev=$(losetup -f)
     losetup -rP "$loopdev" "$_isofile"
     udevadm trigger --name-match="$loopdev" --action=add --settle > /dev/null 2>&1
+    ln -s "$_isofile" /run/initramfs/isofile
+    ln -s "$loopdev" /run/initramfs/isoloop
     rm -f -- "$job"
     [ $(get_os_release_datum DRACUT_VERSION) -ge 110 ] && exit 0
 
