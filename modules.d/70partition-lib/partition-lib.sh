@@ -878,6 +878,10 @@ parse_cfgArgs() {
                 espStart=1
                 cfg=ovl
                 ;;
+            iso | ciso)
+                cfg="$1"
+                isofile=$(readlink -f /run/initramfs/isofile)
+                ;;
             esp=*)
                 szESP=${1#esp=}
                 espStart=1
@@ -1057,5 +1061,34 @@ prep_Partition() {
         mkfs_config "${p_ptfsType:=ext4}" LiveOS_persist $((partitionEnd - partitionStart + 1)) "${extra_attrs}"
         wipefs --lock -af${QUIET:+q} "$p_Partition"
         create_Filesystem "$p_ptfsType" "$p_Partition"
+    }
+}
+
+install_Image() {
+    local src dst loopdev
+    case "$cfg" in
+        ciso)
+            mkdir -p "$mntDir"/isos
+            isofile="$mntDir/isos/${isofile##*/}"
+            src="$(readlink /run/initramfs/isofile)"
+            dst="$isofile" msg='to disk...' dd_copy
+            [ -h /run/initramfs/isoloop ] && {
+                losetup -d /run/initramfs/isoloop
+                umount /run/initramfs/isoscan > /dev/null 2>&1
+            }
+            ln -sf "$p_pt" /run/initramfs/isoscandev
+            [ "${DRACUT_SYSTEMD-}" ] && mount --make-rprivate /run
+            loopdev=$(losetup -f)
+            losetup -rP "$loopdev" "$isofile"
+            ln -sf "$loopdev" /run/initramfs/isoloop
+            livedev="${loopdev}p1"
+            ln -sf "$livedev" /run/initramfs/livedev
+            srcdir=LiveOS
+            ln -sf "$isofile" /run/initramfs/isofile
+            ;;
+    esac
+    [ -d /run/initramfs/iso ] && {
+        # Recover tmpfs storage space.
+        rm -rf -- /run/initramfs/iso
     }
 }
