@@ -535,6 +535,10 @@ parse_cfgArgs() {
                 espStart=1
                 cfg=ovl
                 ;;
+            iso | ciso)
+                cfg="$1"
+                isofile=$(readlink -f /run/initramfs/isofile)
+                ;;
             new_pt_for:*)
                 # New overlay partition for an existing live_dir:
                 base_dir="${1##*:}"
@@ -741,3 +745,31 @@ prep_Partition() {
         create_Filesystem "$p_ptfsType" "$p_Partition"
     }
 }
+
+install_Image() {
+    local src dst loopdev
+    case "$cfg" in
+        ciso)
+            mkdir -p "$mntDir"/isos
+            isofile="$mntDir/isos/${isofile##*/}"
+            src=/run/initramfs/isofile dst="$isofile" msg='to disk...' dd_copy
+            [ -h /run/initramfs/isoloop ] && {
+                losetup -d /run/initramfs/isoloop
+                umount /run/initramfs/isoscan > /dev/null 2>&1
+            }
+            ln -sf "$p_Partition" /run/initramfs/isoscandev
+            [ "${DRACUT_SYSTEMD-}" ] && mount --make-rprivate /run
+            loopdev=$(losetup -P -r -f --show "$isofile")
+            ln -sf "$loopdev" /run/initramfs/isoloop
+            livedev="${loopdev}p1"
+            ln -sf "$livedev" /run/initramfs/livedev
+            srcdir=LiveOS
+            ln -sf "$isofile" /run/initramfs/isofile
+            ;;
+    esac
+    [ -d /run/initramfs/iso ] && {
+        # Recover tmpfs storage space.
+        rm -rf -- /run/initramfs/iso
+    }
+}
+
