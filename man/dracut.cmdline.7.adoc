@@ -1536,7 +1536,7 @@ By default, this is __squashfs.img__.
 Copy the complete image to RAM and use this for booting. This is useful
 when the image resides on, _e.g._, a DVD which needs to be ejected later on.
 
-**rd.overlay=**{[{__<size>__|PROMPTSZ}[,{__<fstype>__|PROMPTFS}[,new_pt_for:__<live_dir>__[,recreate[=__<devspec>__][,{__<devspec>__|PROMPTPT|PROMPTDK}[:{__<pathspec>__|auto}[,ea=__<extra_attr__,__s>__]]]]]]]|none}::
+**rd.overlay=**{[{__<size>__|PROMPTSZ}[,{__<fstype>__|PROMPTFS}[,new_pt_for:__<live_dir>__[,recreate[=__<devspec>__][,{__<devspec>__|PROMPTPT|PROMPTDK}[:{__<pathspec>__|auto}[,{iso|ciso}[,ea=__<extra_attr__,__s>__]]]]]]]|none}::
 Manage the specification of a persistent overlay that can be used to save
 changes made to the root filesystem within the +
 **root=**live:__<device specification>__ or **root=**live:__<url>__ device.
@@ -1607,6 +1607,14 @@ partition for the overlay.
 ** a directory (that is symbolically linked to `/run/overlayfs` for a OverlayFS
 mount overlay). (A required sister directory `/<pathspec>/../ovlwork` is
 automatically made.)
+* *_iso_* specifies configuration of an *_iso-scan/filename_* image file for
+booting with persistence in the designated overlay.  The boot kernel and
+initramfs will be copied to the boot device EFI System Partition and the GRUB
+menu will be updated with this boot target.
+* *_ciso_* specifies that the *_iso-scan/filename_* image file is to be copied
+to the `/isos/` directory of the just designated overlay and used as a new boot
+target on the disk. As above, the boot device EFI System Partition and the GRUB
+menu will be updated for this boot target. 
 * *_ea=<extra_attr,s>_* in a comma-separated string (which, if present, must be
 the last arguments in the *_rd.live.overlay=_* list) that specifies extra make
 filesystem attributes or options particular to the *_<fstype>_*. See the

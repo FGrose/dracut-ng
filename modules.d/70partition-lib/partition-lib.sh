@@ -742,6 +742,10 @@ parse_cfgArgs() {
                 espStart=1
                 cfg=ovl
                 ;;
+            iso | ciso)
+                cfg="$1"
+                isofile=$(readlink -f /run/initramfs/isofile)
+                ;;
             new_pt_for:*)
                 # New overlay partition for an existing live_dir:
                 base_dir="${1##*:}"
@@ -1026,3 +1030,4 @@ install_Image() {
         rm -rf -- /run/initramfs/iso
     }
 }
+
