@@ -136,7 +136,22 @@ case "$livedev_fstype" in
         ;;
 esac
 
-# mount the backing of the live image first
+if [ "$removePt$rd_overlay$cfg" ] && [ ! "$p_Partition" ]; then
+    prep_Partition
+fi
+
+case "$cfg" in
+    ciso)
+        [ "$OverlayFS" ] || ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.live.overlay.overlayfs=${OverlayFS:=LiveOS_rootfs}"
+        [ "${p_ptFlags+set}" ] || set_FS_options "$p_ptfsType" p_ptFlags
+        ovl_pt=$p_Partition
+        ovl_dir="$live_dir"
+        mount_partition
+        install_Image
+        ;;
+esac
+
+# mount the backing of the live image
 mkdir -m 0755 -p /run/initramfs/live
 case "$livedev_fstype" in
     auto)
@@ -166,6 +181,7 @@ case "$livedev_fstype" in
         fi
         ;;
 esac
+
 [ "${mntcmd+mount}" ] && {
     # workaround some timing problem
     sleep 0.1
