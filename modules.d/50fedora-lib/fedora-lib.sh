@@ -137,6 +137,11 @@ s/\s+(quiet|rhgb|splash)\s+(quiet|rhgb|splash)\s+/ /
 
     case "$cfg" in
         ovl) rootcfg=UUID=$(readlink /run/initramfs/live_uuid) ;;
+        iso | ciso)
+            label=$(realpath /run/initramfs/isofile)
+            label="${label##*/}"
+            rootcfg="/dev/loop0p1 iso-scan/filename=UUID=$(findmnt -nro UUID /run/initramfs/isoscandev):isos/${label}"
+            ;;           
     esac
     cfgargs="rd.live.overlay.overlayfs=LiveOS_rootfs${ROOTFLAGS:+ rootflags=$ROOTFLAGS}"
     cfgargs="$(escape "$cfgargs")"
