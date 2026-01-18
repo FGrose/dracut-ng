@@ -19,14 +19,10 @@ ismounted "/run/initramfs/isoscan" && exit 0
 
 isofile="${isopath##*:}"
 
-rd_live_overlay=$(getarg rd.live.overlay) && {
-    p_pt=${rd_live_overlay%%,*}
-    p_pt=${p_pt##*,}
-    p_pt=${p_pt%:*}
-    [ "$p_pt" ] && {
-        p_pt=$(label_uuid_to_dev "$p_pt")
-        get_diskDevice "$p_pt"
-    }
+p_pt=$(getarg rd.overlay -d rd.live.overlay) && {
+    command -v get_p_pt > /dev/null || . /lib/overlayfs-lib.sh
+    get_p_pt "$p_pt" LiveOS_rootfs p_pt
+    [ "$p_pt" = "$ovlfs_name" ] || get_diskDevice "$p_pt"
 }
 
 setup_isoloop() {

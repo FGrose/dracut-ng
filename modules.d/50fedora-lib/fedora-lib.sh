@@ -148,7 +148,7 @@ s/\s+(quiet|rhgb|splash)\s+(quiet|rhgb|splash)\s+/ /
             root_arg=$rootcfg
             ;;
     esac
-    cfgargs="rd.live.overlay.overlayfs=LiveOS_rootfs${ROOTFLAGS:+ rootflags=$ROOTFLAGS}"
+    cfgargs="${ROOTFLAGS:+ rootflags=$ROOTFLAGS}"
     cfgargs="$(escape "$cfgargs")"
     rootcfg="$rootcfg${_ovl_dir:+ rd.ovl.dir=$_ovl_dir}"
     rootcfg="$(escape "$rootcfg")"
@@ -163,7 +163,7 @@ search --no-floppy --efidisk-only --set esp -u ${esp_uuid}
 \    for f in (\$esp)/${_ovl_dir:=LiveOS}/$_BOOTDIR/$IMG*; do\\
 \        initrds=\"\$initrds \$f\"\\
 \    done
-               s/root=live:CDLABEL=\S+/root=live:$rootcfg rw${ovl_spec:+ rd\.live\.overlay=UUID=$ovl_spec} $cfgargs/
+               s/root=live:CDLABEL=\S+/root=live:$rootcfg rw${ovl_spec:+ rd\.overlay=UUID=$ovl_spec,LiveOS_rootfs} $cfgargs/
                }
                /^\s+linux|initrd/ {
                s;(\s*(linux|initrd)\S*\s+).*(/$_BOOTDIR);\1(\$esp)/$_ovl_dir\3;
@@ -175,10 +175,10 @@ search --no-floppy --efidisk-only --set esp -u ${esp_uuid}
                /^\s*submenu\s+/ a\
 \	${root_arg:+root_arg=$root_arg}\\
 \	menu_item 'Start a pristine, transient $_TITLE' '$_BOOTDIR' '' (\$esp)/'$_ovl_dir' '$rootcfg' '$cfgargs'\\
-\	menu_item 'Start the saved -$_ovl_dir- image readonly via a RAM overlay' '$_BOOTDIR' '' (\$esp)/'$_ovl_dir' '$rootcfg' 'rd.ovl.flags=ro rd.live.overlay.readonly rd.live.overlay=UUID=$UUID:/$_ovl_dir/$ovl $cfgargs'\\
-\	menu_item 'Make a new, persistent overlay directory for the base image' '$_BOOTDIR' '' (\$esp)/'$_ovl_dir' '${rootcfg% rd\.ovl\.dir*}' 'rd.ovl.dir=PROMPT rd.live.overlay=UUID=$UUID,new_pt_for$_ovl_dir $cfgargs'\\
-\	menu_item 'Format a new, persistence partition for the -$_ovl_dir- base image' '$_BOOTDIR' '' (\$esp)/'$_ovl_dir' '${rootcfg% rd\.ovl\.dir*}' 'rd.ovl.dir=PROMPT rd.live.overlay=new_pt_for$_ovl_dir,PROMPTSZ,PROMPTFS $cfgargs'\\
-\	menu_item 'Reset any persistent overlay & start the -$_ovl_dir- base image' '$_BOOTDIR' '' (\$esp)/'$_ovl_dir' '$rootcfg' 'rd.live.overlay.reset rd.live.overlay=UUID=$UUID:/$_ovl_dir/$ovl $cfgargs'
+\	menu_item 'Start the saved -$_ovl_dir- image readonly via a RAM overlay' '$_BOOTDIR' '' (\$esp)/'$_ovl_dir' '$rootcfg' 'rd.ovl.flags=ro rd.overlay.readonly rd.overlay=UUID=$UUID:/$_ovl_dir/$ovl $cfgargs'\\
+\	menu_item 'Make a new, persistent overlay directory for the base image' '$_BOOTDIR' '' (\$esp)/'$_ovl_dir' '${rootcfg% rd\.ovl\.dir*}' 'rd.ovl.dir=PROMPT rd.overlay=UUID=$UUID,new_pt_for$_ovl_dir $cfgargs'\\
+\	menu_item 'Format a new, persistence partition for the -$_ovl_dir- base image' '$_BOOTDIR' '' (\$esp)/'$_ovl_dir' '${rootcfg% rd\.ovl\.dir*}' 'rd.ovl.dir=PROMPT rd.overlay=new_pt_for$_ovl_dir,PROMPTSZ,PROMPTFS $cfgargs'\\
+\	menu_item 'Reset any persistent overlay & start the -$_ovl_dir- base image' '$_BOOTDIR' '' (\$esp)/'$_ovl_dir' '$rootcfg' 'rd.overlay.reset rd.overlay=UUID=$UUID:/$_ovl_dir/$ovl $cfgargs'
                /^\s*menuentry\s+/ {
                s;(Start \S+).*(in basic graphics mode).*('|\");Start the -$_ovl_dir- image \2 w/debug log\3;
                }

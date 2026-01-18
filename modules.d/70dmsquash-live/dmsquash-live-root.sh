@@ -56,18 +56,18 @@ ln -sf "$partuuid" /run/initramfs/live_partuuid
 load_fstype "$livedev_fstype"
 roroot_image=$(getarg rd.live.rorootimg -d -y rd.live.squashimg) || roroot_image=squashfs.img
 getargbool 0 rd.live.ram && live_ram=yes
-getargbool 0 rd.overlayfs.reset -d -y rd.live.overlay.reset && {
+getargbool 0 rd.overlay.reset -d -y rd.live.overlay.reset && {
     reset_overlay=yes
-    etc_kernel_cmdline="$etc_kernel_cmdline rd.overlayfs.reset"
+    etc_kernel_cmdline="$etc_kernel_cmdline rd.overlay.reset"
 }
-getargbool 0 rd.overlayfs.readonly -d -y rd.live.overlay.readonly && {
+getargbool 0 rd.overlay.readonly -d -y rd.live.overlay.readonly && {
     readonly_overlay=--readonly
-    etc_kernel_cmdline="$etc_kernel_cmdline rd.overlayfs.readonly"
+    etc_kernel_cmdline="$etc_kernel_cmdline rd.overlay.readonly"
 }
 getargbool 0 rd.writable.fsimg && writable_fsimg=yes
 overlay_size=$(getarg rd.live.overlay.size=) || overlay_size=32768
 getargbool 0 rd.live.overlay.thin && thin_snapshot=yes
-OverlayFS=$(getarg rd.overlayfs -d -y rd.live.overlay.overlayfs) && {
+OverlayFS=$(getarg rd.overlay -d -y rd.live.overlay.overlayfs) && {
     case "$OverlayFS" in
         '') OverlayFS=1 ;;
         0 | no | off) unset -v 'OverlayFS' ;;
@@ -78,7 +78,7 @@ OverlayFS=$(getarg rd.overlayfs -d -y rd.live.overlay.overlayfs) && {
     load_fstype overlay || {
         [ "$OverlayFS" ] && {
             unset -v 'OverlayFS'
-            etc_kernel_cmdline="$etc_kernel_cmdline rd.overlayfs=0"
+            etc_kernel_cmdline="$etc_kernel_cmdline rd.overlay=0"
         }
     }
 }
@@ -135,22 +135,24 @@ ln -sf "$ovl_dir" /run/initramfs/ovl_dir
 
 [ "$partitionTable" ] || get_partitionTable "$diskDevice"
 
-rd_live_overlay=$(getarg rd.live.overlay) && {
-    IFS=, parse_cfgArgs ovl,"$rd_live_overlay"
+rd_overlay=$(getarg rd.overlay -d rd.live.overlay) && {
+    IFS=, parse_cfgArgs ovl,"$rd_overlay"
 
-    # Set default ovlpath, if not specified.
-    [ "$ovlpath" = auto ] && unset -v 'ovlpath'
-    : "${ovlpath:=/"$ovl_dir/overlay-$label-$uuid"}"
-    str_starts "$ovlpath" '/' || ovlpath=/"$ovlpath"
+    [ "$p_pt" ] && {
+        # Set default ovlpath, if not specified.
+        [ "$ovlpath" = auto ] && unset -v 'ovlpath'
+        : "${ovlpath:=/"$ovl_dir/overlay-$label-$uuid"}"
+        str_starts "$ovlpath" '/' || ovlpath=/"$ovlpath"
+    }
 }
 
-if [ "$removePt$rd_live_overlay$cfg" ]; then
+if [ "$removePt$p_pt$cfg" ]; then
     prep_Partition
 fi
 
 case "$cfg" in
     ciso)
-        [ "$OverlayFS" ] || ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.live.overlay.overlayfs=${OverlayFS:=LiveOS_rootfs}"
+        [ "$OverlayFS" ] || ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.overlay=${OverlayFS:=LiveOS_rootfs}"
         set_FS_opts "$fsType" p_ptFlags
         ovl_dir="$ovl_dir"
         ln -sf "$p_pt" /run/initramfs/p_pt
@@ -286,7 +288,7 @@ do_live_overlay() {
                     }
                     [ "$OverlayFS" ] && {
                         # Override incorrect configuration:
-                        ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.overlayfs=0"
+                        ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.overlay=0"
                         unset -v 'OverlayFS'
                     }
                     setup=setup
@@ -297,13 +299,13 @@ do_live_overlay() {
                     # This leads to an overmount of $mntDir in /sbin/do-overlay
                     ovlpath=/overlayfs
                     ovl_dir=''
-                    [ "$OverlayFS" ] || ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.overlayfs=${OverlayFS:=LiveOS_rootfs}"
+                    [ "$OverlayFS" ] || ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.overlay=${OverlayFS:=LiveOS_rootfs}"
                     setup=setup
                     ;;
             esac
         elif [ -d "$mntDir$ovlpath" ] && [ -d "$mntDir$ovlpath"/../ovlwork ]; then
             ## OverlayFS on xattr-enabled filesystem.
-            [ "$OverlayFS" ] || ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.overlayfs=${OverlayFS:=LiveOS_rootfs}"
+            [ "$OverlayFS" ] || ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.overlay=${OverlayFS:=LiveOS_rootfs}"
             setup=setup
         fi
     fi
@@ -397,7 +399,7 @@ if [ -e "$FSIMG" ]; then
         if [ -d /sys/module/overlay ]; then
             [ "$OverlayFS" ] || {
                 OverlayFS=LiveOS_rootfs
-                ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.overlayfs=LiveOS_rootfs"
+                ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.overlay=LiveOS_rootfs"
             }
         else
             Die 'OverlayFS is required but unavailable.'
@@ -446,7 +448,7 @@ if [ "$FSIMG" ]; then
     # For writable DM images...
     if [ ! "$ro" ] && [ "$live_ram" ] && [ ! "$OverlayFS" ] \
         || [ "$writable_fsimg" ] \
-        || ! case "$rd_live_overlay" in none | None | NONE) false ;; esac then
+        || ! case "$rd_overlay" in none | None | NONE) false ;; esac then
         readonly_base=1
         if [ ! "$readonly_overlay" ]; then
             unset readonly_base
@@ -487,10 +489,10 @@ if [ "$OverlayFS" ]; then
             [ "$OverlayFS" = 1 ] && OverlayFS=os_rootfs
         fi
     }
-    # From rd.live.overlay.overlayfs=1 case
+    # From rd.overlay=1 case
     [ "$OverlayFS" = 1 ] && {
-        OverlayFS="$rd_live_overlay"
-        etc_kernel_cmdline="$etc_kernel_cmdline rd.overlayfs=$rd_live_overlay"
+        OverlayFS="$rd_overlay"
+        etc_kernel_cmdline="$etc_kernel_cmdline rd.overlay=$rd_overlay"
     }
     ovl_dir="$ovl_dir"
     # Add an OverlayFS for persistent writes.

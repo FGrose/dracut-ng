@@ -12,7 +12,7 @@ command -v do_overlayfs > /dev/null || . /lib/overlayfs-lib.sh
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
 [ "$1" ] || exit 1
-p_pt=$(getarg rd.overlayfs) || exit 0
+p_pt=$(getarg rd.overlay) || exit 0
 load_fstype overlay || Die 'OverlayFS is required but unavailable.'
 
 root_pt="$1"

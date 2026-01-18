@@ -73,7 +73,7 @@ case "$(btrfs property get -ts "$subvol")" in
                 srcflags="$p_ptFlags" mount_partition
         else
             mkdir -p /etc/kernel
-            printf '%s' " rd.overlayfs=${ovlfs_name-os_snapfs}" >> /etc/kernel/cmdline
+            printf '%s' " rd.overlay=${ovlfs_name-os_snapfs}" >> /etc/kernel/cmdline
         fi
         # Mount snapshot as rootfsbase.
         fstype=btrfs srcPartition="$root_pt" mountPoint=/run/rootfsbase \
