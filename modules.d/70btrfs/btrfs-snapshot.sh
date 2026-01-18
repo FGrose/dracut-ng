@@ -68,14 +68,14 @@ case "$(btrfs property get -ts "$subvol")" in
         if [ -b "$p_pt" ]; then
             [ "${DRACUT_SYSTEMD-}" ] || {
                 command -v det_fs > /dev/null || . /lib/fs-lib.sh
-                command -v set_FS_opts > /dev/null || . /lib/distribution-lib.sh
-                set_FS_opts "$(det_fs "$p_pt")" p_ptFlags
+                command -v set_FS_opts_w > /dev/null || . /lib/distribution-lib.sh
+                set_FS_opts_w "$(det_fs "$p_pt")" p_ptFlags
             }
             fstype="$p_ptfsType" srcPartition="$p_pt" mountPoint=/run/os_persist \
                 srcflags="$p_ptFlags" mount_partition
         else
             mkdir -p /etc/kernel
-            printf '%s' " rd.overlayfs=${ovlfs_name-os_snapfs}" >> /etc/kernel/cmdline
+            printf '%s' " rd.overlay=${ovlfs_name-os_snapfs}" >> /etc/kernel/cmdline
         fi
         # Mount snapshot as rootfsbase.
         fstype=btrfs srcPartition="$root_pt" mountPoint=/run/rootfsbase \

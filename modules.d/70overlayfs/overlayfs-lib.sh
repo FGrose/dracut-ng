@@ -3,34 +3,60 @@
 
 command -v getarg > /dev/null || . /lib/dracut-lib.sh
 command -v set_FS_opts_w > /dev/null || . /lib/distribution-lib.sh
+command -v parse_cfgArgs > /dev/null || . /lib/partition-lib.sh
 
-# Fetch non-boolean value for rd.overlay or fall back to rd.live.overlay
+# Fetch non-boolean values for rd.overlay or fall back to rd.live.overlay
+# $1 - ovlfs_name - OverlayFS mount source name default.
 get_rd_overlay() {
-    local rd_overlay
-
-    rd_overlay=$(getarg rd.overlay)
-    case "$rd_overlay" in
-        0 | no | off | '' | 1)
-            rd_overlay=$(getarg rd.live.overlay) || return 1
-            warn "Kernel command line option 'rd.live.overlay' is deprecated, use 'rd.overlay' instead."
-            ;;
+    rd_dm_overlay="$(getarg rd.dm.overlay -d rd.live.overlay)" \
+        && IFS=, parse_cfgArgs ovl,"$rd_dm_overlay"
+    OverlayFS="$(getarg rd.live.overlay.overlayfs)" && {
+        warn "Kernel command line option 'rd.live.overlay.overlayfs' is deprecated, use 'rd.overlay' instead."
+        case "$OverlayFS" in
+            0 | no | off) unset -v 'OverlayFS' ;;
+            '' | 1)
+                [ "$rd_dm_overlay" ] || {
+                    # For legacy case of using dmsquash-live for an OverlayFS
+                    #   on a regular block root device:
+                    OverlayFS=os_rootfs
+                    ovlfs_name=os_rootfs
+                    warn "This use of 'rd.live.overlay.overlayfs' is deprecated, use 'root=ovl:<device_specification>' instead."
+                }
+                ;;
+            *) ovlfs_name="$OverlayFS" ;;
+        esac
+        [ "$OverlayFS" ] && { load_fstype overlay || warn 'OverlayFS is requested but unavailable.'; }
+    }
+    : "${ovlfs_name:="${1-os_rootfs}"}"
+    ln -s "$ovlfs_name" /run/initramfs/ovlfs
+    volatile=volatile
+    ln -s tmpfs /run/initramfs/p_pt
+    rd_overlay="$(getarg rd.overlay)" && {
+        # Set p_pt, p_ptfstype, size; toggle volatile.
+        IFS=, parse_cfgArgs ovl,"$rd_overlay"
+        OverlayFS="$ovlfs_name"
+    }
+    ovl_dir="$(getarg rd.ovl.dir -d rd.live.dir)"
+    case "$1" in
+        os_rootfs) : "${ovl_dir:=RootOvl}" ;;
+        LiveOS_rootfs) : "${ovl_dir:=LiveOS}" ;;
     esac
-    echo "$rd_overlay"
-}
-
-# Called from overlayfs-generator.sh, dmsquash-generator.sh, & mount-overlayfs.sh
-# Extract persistence partition from input string or assign default values
-# $1 arg_str [$2 - default ovlfs_name] [$3 - variable name]
-get_p_pt() {
-    case "${1%%[=/]*}" in
-        0 | no | off) eval "$3=off" ;;
-        '' | 1) ovlfs_name="${2-"${ovlfs_name-os_rootfs}"}" ;;
-        "${1%%,*}") ovlfs_name=${1%%,*} ;;
-        *) # devspec present
-            unset -v 'volatile'
-            IFS=, parse_cfgArgs "$1"
-            ;;
-    esac
+    ln -s "$ovl_dir" /run/initramfs/ovl_dir
+    [ "$OverlayFS" ] && {
+        load_fstype overlay || {
+            unset -v 'OverlayFS'
+            etc_kernel_cmdline="$etc_kernel_cmdline rd.overlay=0"
+        }
+    }
+    [ "$volatile" ] || set_FS_opts_w "$p_ptfsType" p_ptFlags
+    getargbool 0 rd.overlay.reset -d -y rd.live.overlay.reset && {
+        reset_overlay=yes
+        ln -s yes /run/initramfs/reset_ovl
+    }
+    getargbool 0 rd.overlay.readonly -d -y rd.live.overlay.readonly && {
+        readonly_overlay=--readonly
+        ln -s readonly /run/initramfs/ro_ovl
+    }
 }
 
 # Called from overlayfs-generator.sh or dmsquash-generator.sh
@@ -117,13 +143,15 @@ mount_partition() {
     fi
 }
 
-do_overlayfs() {
-    if [ ! "$ovlpath" ] || [ "$ovlpath" = "auto" ]; then
-        ovlpath="/${ovl_dir}/overlay-$label-$uuid"
-    elif ! str_starts "$ovlpath" "/"; then
-        ovlpath=/"${ovlpath}"
-    fi
+get_ovlpath() {
+    ovlpath="$(readlink /run/initramfs/ovlpath)"
+    [ "$ovlpath" = auto ] && unset -v 'ovlpath'
+    : "${ovlpath:=/"$ovl_dir"/overlay-"$label"-"$uuid"}"
+    str_starts "$ovlpath" '/' || ovlpath=/"$ovlpath"
+}
 
+do_overlayfs() {
+    get_ovlpath
     if [ "$p_pt" ] && [ "$ovlpath" ]; then
         mkdir -m 0755 -p "${mntDir:=/run/os_persist}"
         if [ "$1" ]; then

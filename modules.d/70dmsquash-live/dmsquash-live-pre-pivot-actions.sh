@@ -18,7 +18,7 @@ if [ -d /run/initramfs/live/updates ] || [ -d /updates ]; then
     done
 fi
 
-getargbool 0 rd.overlayfs && {
+[ -b /run/initramfs/p_pt ] && {
     mntDir=/run/LiveOS_persist
     ovl_dir=$(readlink /run/initramfs/ovl_dir)
 

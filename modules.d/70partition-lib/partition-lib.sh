@@ -781,7 +781,7 @@ parse_cfgArgs() {
                 base_dir="${1##*:}"
                 cfg=ovl:"${1%:*}"
                 # Trigger default ovlpath specification.
-                rd_live_overlay=''
+                rd_overlay=''
                 ;;
             esp=*)
                 szESP=${1#esp=}
@@ -819,7 +819,11 @@ parse_cfgArgs() {
                 case "$1" in
                     *=?*)
                         p_pt="$(label_uuid_to_dev "${1%%:*}")"
-                        strstr "$1" ":" && ovlpath=${1##*:}
+                        ln -sf "$p_pt" /run/initramfs/p_pt
+                        strstr "$1" ":" && {
+                            ovlpath=${1##*:}
+                            ln -sf "$ovlpath" /run/initramfs/ovlpath
+                        }
                         ;;
                     *) ovlfs_name="$1" ;;
                 esac
