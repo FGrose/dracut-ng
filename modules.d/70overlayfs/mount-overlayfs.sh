@@ -3,21 +3,20 @@
 # Only proceed if prepare-overlayfs.sh has run and set up rootfsbase.
 # This handles the case where root isn't available yet (e.g., network root like NFS).
 # The script will be called again at pre-pivot when the root is mounted.
-[ -e /run/rootfsbase ] || return 0
+[ -e /run/rootfsbase ] || [ -h /run/initramfs/p_pt ] || return 0
 
 command -v getarg > /dev/null || . /lib/dracut-lib.sh
 
 OverlayFS=$(getarg rd.overlay) || [ -e /run/overlayfs-crypt-ready ] || return 0
 
-command -v get_p_pt > /dev/null || . /lib/overlayfs-lib.sh
-volatile=volatile
-get_p_pt "$OverlayFS" os_rootfs OverlayFS
-[ "$OverlayFS" = off ] && exit 0
+[ -d /run/ovl/upperdir ] && volatile=volatile
+
+read -r ovlfs_name < /run/initramfs/ovlfs
 
 incol2 /proc/mounts "$NEWROOT" && umount "$NEWROOT"
 
 ismounted "${ovlfs_name:=os_rootfs}" || {
-    [ -h /run/overlayfs ] && getargbool 0 rd.overlay.readonly && {
+    [ -b /run/initramfs/p_pt ] && [ -h /run/initramfs/ro_ovl ] && {
         readonly_overlay=--readonly
         volatile=volatile
     }

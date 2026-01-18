@@ -36,16 +36,7 @@ echo "$uuid" > /run/initramfs/live_uuid
 load_fstype "$livedev_fstype"
 roroot_image=$(getarg rd.live.rorootimg -d -y rd.live.squashimg) || roroot_image=squashfs.img
 getargbool 0 rd.live.ram && live_ram=yes
-getargbool 0 rd.overlay.reset -d -y rd.live.overlay.reset && {
-    reset_overlay=yes
-    ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.overlay.reset"
-}
-getargbool 0 rd.overlay.readonly -d -y rd.live.overlay.readonly && {
-    readonly_overlay=--readonly
-    ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.overlay.readonly"
-}
 getargbool 0 rd.writable.fsimg && writable_fsimg=yes
-overlay_size=$(getarg rd.live.overlay.size=) || overlay_size=32768
 getargbool 0 rd.live.overlay.thin && thin_snapshot=yes
 OverlayFS=$(getarg rd.overlay -d -y rd.live.overlay.overlayfs) && {
     case "$OverlayFS" in
@@ -68,7 +59,7 @@ rd_live_check() {
     local - check_dev="$1"
     set +x
     getargbool 0 rd.live.check && {
-        type plymouth > /dev/null 2>&1 && plymouth --hide-splash
+        command -v plymouth > /dev/null 2>&1 && plymouth --hide-splash
         if [ "${DRACUT_SYSTEMD-}" ]; then
             systemctl start checkisomd5@"$(dev_unit_name "$check_dev")".service
         else
@@ -81,9 +72,17 @@ rd_live_check() {
             Die "Media check failed!"
             exit 1
         fi
-        type plymouth > /dev/null 2>&1 && plymouth --show-splash
+        command -v plymouth > /dev/null 2>&1 && plymouth --show-splash
     }
 }
+
+if [ "${DRACUT_SYSTEMD-}" ]; then
+    read -r OverlayFS < /run/initramfs/ovlfs
+else
+    get_rd_overlay LiveOS_rootfs
+fi
+
+[ -h /run/initramfs/ro_ovl ] && readonly_overlay=--readonly
 
 case "$livedev_fstype" in
     iso9660 | udf)
@@ -92,7 +91,7 @@ case "$livedev_fstype" in
         liverw=ro
         ;;
     *)
-        srcdir=${ovl_dir:=LiveOS}
+        srcdir="${ovl_dir}"
         liverw=rw
         ;;
 esac
@@ -118,18 +117,7 @@ IFS=: parse_pt_row "$(pt_row 2)"
     [ "$size$p_ptfsType" ] && espStart=1
 }
 
-rd_overlay=$(get_rd_overlay) && {
-    IFS=, parse_cfgArgs "$rd_overlay"
-
-    # Set default ovlpath, if not specified.
-    [ "$ovlpath" = auto ] && unset -v 'ovlpath'
-    : "${ovlpath:=/"$live_dir"/overlay-"$label"-"$uuid"}"
-    str_starts "$ovlpath" '/' || ovlpath=/"$ovlpath"
-}
-
-if [ "$removePt$rd_overlay$cfg" ]; then
-    prep_Partition
-fi
+[ "$removePt$cfg" ] && prep_Partition
 
 case "$cfg" in
     ciso)
@@ -300,7 +288,8 @@ do_live_overlay() {
                 '  Press [Enter] to continue.'
         fi
         [ "$OverlayFS" ] || {
-            dd if=/dev/null of=/overlay bs=1024 count=1 seek=$((overlay_size * 1024)) 2> /dev/null
+            dm_overlay_size=$(getarg rd.dm.overlay.size= -d rd.live.overlay.size=) || dm_overlay_size=32768
+            dd if=/dev/null of=/overlay bs=1024 count=1 seek=$((dm_overlay_size * 1024)) 2> /dev/null
             if [ "$setup" ] && [ "$readonly_overlay" ]; then
                 over=$(losetup -f)
                 losetup "$over" /overlay
@@ -325,7 +314,7 @@ do_live_overlay() {
             mkdir -m 0755 -p /run/initramfs/thin-overlay
 
             # In block units (512b)
-            thin_data_sz=$((overlay_size * 1024 * 1024 / 512))
+            thin_data_sz=$((dm_overlay_size * 1024 * 1024 / 512))
             thin_meta_sz=$((thin_data_sz / 10))
 
             # It is important to have the backing file on a tmpfs
@@ -364,7 +353,7 @@ do_live_overlay() {
 }
 if [ -e "$FSIMG" ]; then
     fsType="$(det_fs "$FSIMG")"
-    load_fstype "$fsType"
+    [ "${DRACUT_SYSTEMD-}" ] || load_fstype "$fsType"
     case "$fsType" in
         erofs | squashfs) ro=ro ;;
         auto) Die "Could not determine filesystem type for $FSIMG." ;;
@@ -384,18 +373,17 @@ if [ -e "$FSIMG" ]; then
     }
     # Check if the file system is the root image or contains an embedded image.
     if [ -d /run/rootfsbase/usr ] || [ -d /run/rootfsbase/ostree ]; then
-        # If needed, adjust OverlayFS,
-        #  or Die if OverlayFS is required but unavailable.
-        if [ -d /sys/module/overlay ]; then
-            [ "$OverlayFS" ] || {
+        [ "$OverlayFS" ] || {
+            # If needed, adjust OverlayFS,
+            #  or Die if OverlayFS is required but unavailable.
+            if load_fstype overlay; then
                 OverlayFS=LiveOS_rootfs
                 ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.overlay=LiveOS_rootfs"
-            }
-        else
-            Die 'OverlayFS is required but unavailable.'
-            exit 1
-        fi
-
+            else
+                Die 'OverlayFS is required but unavailable.'
+                exit 1
+            fi
+        }
     elif [ -d /run/rootfsbase/LiveOS ]; then
         rm -- /run/initramfs/rorootfs
         [ -f /run/rootfsbase/LiveOS/rootfs.img ] || {
@@ -439,9 +427,7 @@ if [ "$FSIMG" ]; then
     if [ ! "$ro" ] && [ "$live_ram" ] && [ ! "$OverlayFS" ] \
         || [ "$writable_fsimg" ] \
         || ! case "$rd_overlay" in none | None | NONE) false ;; esac then
-        readonly_base=1
         if [ ! "$readonly_overlay" ]; then
-            unset readonly_base
             setup=rw
         else
             setup=setup
@@ -471,19 +457,14 @@ if [ "$OverlayFS" ]; then
             srcPartition="$FSIMG" srcflags=,ro mountPoint=/run/rootfsbase \
                 override=override mount_partition
         else
-            [ -d /sys/module/overlay ] || Die 'OverlayFS is required but unavailable.'
             # Support legacy case of OverlayFS over traditional root block device.
             ln -sf /run/initramfs/live /run/rootfsbase
-            [ "$OverlayFS" = 1 ] && OverlayFS=os_rootfs
+            [ "$OverlayFS" = LiveOS_rootfs ] && OverlayFS=os_rootfs
+            [ "${DRACUT_SYSTEMD-}" ] && ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.overlay=os_rootfs"
         fi
     }
-    # From rd.live.overlay.overlayfs=1 case
-    [ "$OverlayFS" = 1 ] && {
-        OverlayFS="$rd_overlay"
-        ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.overlay=$rd_overlay"
-    }
     # Add an OverlayFS for persistent writes.
-    [ "$p_pt" ] && do_overlayfs
+    [ "$p_pt" ] && do_overlayfs /run/LiveOS_persist
 else
     [ "${DRACUT_SYSTEMD-}" ] || printf \
         'mount %s /dev/mapper/live-rw %s\n' "${rflags:+-o $rflags}" "$NEWROOT" \

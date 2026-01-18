@@ -2,8 +2,9 @@
 
 [ "$RD_DEBUG" = yes ] && set -x
 PS4='+ $(IFS=\  read -r u _ </proc/uptime; echo "$u") ${BASH_SOURCE-$0}@$LINENO${FUNCNAME:+ $FUNCNAME()}: '
-command -v getarg > /dev/null || . /lib/dracut-lib.sh
-command -v get_diskDevice > /dev/null || . /lib/partition-lib.sh
+command -v ismounted > /dev/null || . /lib/dracut-lib.sh
+command -v prompt_for_device > /dev/null || . /lib/partition-lib.sh
+command -v get_rd_overlay > /dev/null || . /lib/overlayfs-lib.sh
 
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
@@ -15,15 +16,7 @@ ismounted "/run/initramfs/isoscan" && exit 0
 
 isofile="${isopath##*:}"
 
-rd_live_overlay=$(getarg rd.live.overlay) && {
-    p_pt=${rd_live_overlay%%,*}
-    p_pt=${p_pt##*,}
-    p_pt=${p_pt%:*}
-    [ "$p_pt" ] && {
-        p_pt=$(label_uuid_to_dev "$p_pt")
-        get_diskDevice "$p_pt"
-    }
-}
+get_rd_overlay LiveOS_rootfs
 
 setup_isoloop() {
     if [ "$p_pt" -ef "$devspec" ]; then

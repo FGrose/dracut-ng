@@ -18,7 +18,7 @@ if [ -d /run/initramfs/live/updates ] || [ -d /updates ]; then
     done
 fi
 
-getargbool 0 rd.overlayfs && {
+[ -b /run/initramfs/p_pt ] && {
     mntDir=/run/LiveOS_persist
     read -r ovl_dir < /run/initramfs/ovl_dir
 
@@ -98,4 +98,3 @@ fi
 # Hide the base rootfs mountpoint.
 umount -l /run/rootfsbase > /dev/null 2>&1
 umount "$NEWROOT"/run
-
