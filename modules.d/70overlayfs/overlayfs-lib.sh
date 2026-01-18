@@ -2,35 +2,60 @@
 # overlayfs-lib.sh: utilities for OverlayFS use
 
 command -v getarg > /dev/null || . /lib/dracut-lib.sh
-command -v set_FS_options > /dev/null || . /lib/partition-lib.sh
+command -v parse_cfgArgs > /dev/null || . /lib/partition-lib.sh
 
-# Fetch non-boolean value for rd.overlay or fall back to rd.live.overlay
+# Fetch non-boolean values for rd.overlay or fall back to rd.live.overlay
+# $1 - ovlfs_name - OverlayFS mount source name default.
 get_rd_overlay() {
-    local rd_overlay
-
-    rd_overlay=$(getarg rd.overlay)
-    case "$rd_overlay" in
-        0 | no | off | '' | 1)
-            rd_overlay=$(getarg rd.live.overlay) || return 1
-            warn "Kernel command line option 'rd.live.overlay' is deprecated, use 'rd.overlay' instead."
-            ;;
+    rd_dm_overlay="$(getarg rd.dm.overlay -d rd.live.overlay)" \
+        && IFS=, parse_cfgArgs ovl,"$rd_dm_overlay"
+    OverlayFS="$(getarg rd.live.overlay.overlayfs)" && {
+        warn "Kernel command line option 'rd.live.overlay.overlayfs' is deprecated, use 'rd.overlay' instead."
+        case "$OverlayFS" in
+            0 | no | off) unset -v 'OverlayFS' ;;
+            '' | 1)
+                [ "$rd_dm_overlay" ] || {
+                    # For legacy case of using dmsquash-live for an OverlayFS
+                    #   on a regular block root device:
+                    OverlayFS=os_rootfs
+                    ovlfs_name=os_rootfs
+                    warn "This use of 'rd.live.overlay.overlayfs' is deprecated, use 'root=ovl:<device_specification>' instead."
+                }
+                OverlayFS="$1"
+                ;;
+            *) ovlfs_name="$OverlayFS" ;;
+        esac
+    }
+    volatile=volatile
+    ln -sf tmpfs /run/initramfs/p_pt
+    rd_overlay="$(getarg rd.overlay)" && {
+        # Set p_pt, p_ptfstype, size; toggle volatile.
+        IFS=, parse_cfgArgs ovl,"$rd_overlay"
+        OverlayFS="$ovlfs_name"
+    }
+    : "${ovlfs_name:="${1-os_rootfs}"}"
+    echo "$ovlfs_name" > /run/initramfs/ovlfs
+    ovl_dir="$(getarg rd.ovl.dir -d rd.live.dir)"
+    case "$1" in
+        os_rootfs) : "${ovl_dir:=RootOvl}" ;;
+        LiveOS_rootfs) : "${ovl_dir:=LiveOS}" ;;
     esac
-    echo "$rd_overlay"
-}
-
-# Called from overlayfs-generator.sh, dmsquash-generator.sh, & mount-overlayfs.sh
-# Extract persistence partition from input string or assign default values
-# $1 arg_str [$2 - default ovlfs_name] [$3 - variable name]
-get_p_pt() {
-    case "${1%%[=/]*}" in
-        0 | no | off) eval "$3=off" ;;
-        '' | 1) ovlfs_name="${2-"${ovlfs_name-os_rootfs}"}" ;;
-        "${1%%,*}") ovlfs_name=${1%%,*} ;;
-        *) # devspec present
-            unset -v 'volatile'
-            IFS=, parse_cfgArgs "$1"
-            ;;
-    esac
+    echo "$ovl_dir" > /run/initramfs/ovl_dir
+    [ "$OverlayFS" ] && {
+        load_fstype overlay || {
+            unset -v 'OverlayFS'
+            etc_kernel_cmdline="$etc_kernel_cmdline rd.overlay=0"
+        }
+    }
+    [ "$volatile" ] || [ "${p_ptFlags+set}" ] || set_FS_options "$p_ptfsType" p_ptFlags
+    getargbool 0 rd.overlay.reset -d -y rd.live.overlay.reset && {
+        reset_overlay=yes
+        ln -sf yes /run/initramfs/reset_ovl
+    }
+    getargbool 0 rd.overlay.readonly -d -y rd.live.overlay.readonly && {
+        readonly_overlay=--readonly
+        ln -sf readonly /run/initramfs/ro_ovl
+    }
 }
 
 # Called from overlayfs-generator.sh or dmsquash-generator.sh
@@ -142,12 +167,12 @@ do_overlayfs() {
     mkdir -m 0755 -p "${mntDir:="${1:-/run/os_persist}"}"
     set -- "$(get_mountpoint)"
     if [ "$1" ]; then
-        # We need $ovl_pt writable for overlay storage
+        # We need $p_pt writable for overlay storage
         [ ! -w "$mntDir" ] && [ ! "$readonly_overlay" ] && mount -o remount,rw "$mntDir"
     else
-        [ "${p_ptFlags+set}" ] || set_FS_options "${p_ptfsType:=$(det_fs "$ovl_pt")}" p_ptFlags
-        ln -sf "$ovl_pt" /run/initramfs/ovl_pt
-        fstype="${p_ptfsType:-auto}" srcPartition="$ovl_pt" \
+        [ "${p_ptFlags+set}" ] || set_FS_options "${p_ptfsType:=$(det_fs "$p_pt")}" p_ptFlags
+        ln -sf "$p_pt" /run/initramfs/p_pt
+        fstype="${p_ptfsType:-auto}" srcPartition="$p_pt" \
             mountPoint="$mntDir" srcflags="$p_ptFlags" fsckoptions="$fsckoptions" \
             mount_partition
     fi
