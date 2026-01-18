@@ -34,7 +34,7 @@ set_FS_opts() {
 }
 
 update_BootConfig() {
-    local _live_dir root rootcfg livedev ovl_spec ovl _TITLE GRUB_cfg cfg UUID ovl_uuid sedcmd label
+    local _ovl_dir root rootcfg livedev ovl_spec ovl _TITLE GRUB_cfg cfg UUID ovl_uuid sedcmd label
     read -r cfg < /run/initramfs/cfg
     cfg="${cfg%%[:,+]*}"
     if [ "$mntDir" ]; then
@@ -54,9 +54,9 @@ update_BootConfig() {
 
     # Transfer boot directory files to ESP.
     mount -n -m --bind /run/initramfs/ESP "$root"/mnt
-    LC_ALL=C chroot "$root" find /boot/. -maxdepth 1 \! -type d -execdir cp --dereference --preserve=all "{}" "/mnt/$live_dir/$BOOTDIR/{}" \;
+    LC_ALL=C chroot "$root" find /boot/. -maxdepth 1 \! -type d -execdir cp --dereference --preserve=all "{}" "/mnt/$ovl_dir/$BOOTDIR/{}" \;
     umount "$root"/mnt
-    sync -f /run/initramfs/ESP/"$live_dir"
+    sync -f /run/initramfs/ESP/"$ovl_dir"
 
     # Backup previous configuration.
     cp -a "${GRUB_cfg:=/run/initramfs/ESP/EFI/BOOT/grub.cfg}" "$GRUB_cfg".prev
@@ -79,7 +79,7 @@ $@
 E
     }
 
-    _live_dir="$(escape "$live_dir")"
+    _ovl_dir="$(escape "$ovl_dir")"
 
     # Extract image title.
     _TITLE="$(
@@ -100,13 +100,13 @@ E
     _BOOTDIR="$(escape "${BOOTDIR}")"
 
     # Reset template menuentries to base state.
-    # Distinguish the new grub menuentry with '$_live_dir ~'.
-    [ "$live_dir" = LiveOS ] && unset -v _live_dir
+    # Distinguish the new grub menuentry with '$_ovl_dir ~'.
+    [ "$ovl_dir" = LiveOS ] && unset -v _ovl_dir
     sed -i -r "1 s/^\s*set\s+default=.*/set default=0/
 s/^\s*set\s+timeout=.*/set timeout=60/
 /^\s*menuentry/ {
 s/\S+\s+~$_TITLE/$_TITLE/
-s;(^menuentry\s+).*$_TITLE.*('|\");\1\2Start w/persistence ${_live_dir:+$_live_dir\ ~}$_TITLE\2;
+s;(^menuentry\s+).*$_TITLE.*('|\");\1\2Start w/persistence ${_ovl_dir:+$_ovl_dir\ ~}$_TITLE\2;
 }
 s/^search\s+.*/### BEGIN/
 /^\s*(search|for|initrds|done)\>/ d
@@ -128,7 +128,7 @@ s/\s+(quiet|rhgb|splash)\s+(quiet|rhgb|splash)\s+/ /
 }" "$GRUB_cfg"
 
     ovl="$(escape "${ovlfsdir##*/}")"
-    ovl_spec="\/${_live_dir:-LiveOS}\/$ovl"
+    ovl_spec="\/${_ovl_dir:-LiveOS}\/$ovl"
 
     # Update menu entries for the new installation.
     rootcfg=UUID=$UUID
@@ -150,7 +150,7 @@ s/\s+(quiet|rhgb|splash)\s+(quiet|rhgb|splash)\s+/ /
     esac
     cfgargs="rd.live.overlay.overlayfs=LiveOS_rootfs${ROOTFLAGS:+ rootflags=$ROOTFLAGS}"
     cfgargs="$(escape "$cfgargs")"
-    rootcfg="$rootcfg${_live_dir:+ rd.live.dir=$_live_dir}"
+    rootcfg="$rootcfg${_ovl_dir:+ rd.ovl.dir=$_ovl_dir}"
     rootcfg="$(escape "$rootcfg")"
     [ "$IMG" = initrd.img ] && IMG=initrd*.img
 
@@ -160,13 +160,13 @@ insmod fat\\
 search --no-floppy --efidisk-only --set esp -u ${esp_uuid}
                /^\s*linux/ {
                i\
-\    for f in (\$esp)/${_live_dir:=LiveOS}/$_BOOTDIR/$IMG*; do\\
+\    for f in (\$esp)/${_ovl_dir:=LiveOS}/$_BOOTDIR/$IMG*; do\\
 \        initrds=\"\$initrds \$f\"\\
 \    done
                s/root=live:CDLABEL=\S+/root=live:$rootcfg rw${ovl_spec:+ rd\.live\.overlay=UUID=$ovl_spec} $cfgargs/
                }
                /^\s+linux|initrd/ {
-               s;(\s*(linux|initrd)\S*\s+).*(/$_BOOTDIR);\1(\$esp)/$_live_dir\3;
+               s;(\s*(linux|initrd)\S*\s+).*(/$_BOOTDIR);\1(\$esp)/$_ovl_dir\3;
                }
                /^### BEGIN/,$ {
                s/(^\s*initrd\S*\s+)\S+/\1\$initrds/
@@ -174,13 +174,13 @@ search --no-floppy --efidisk-only --set esp -u ${esp_uuid}
                }
                /^\s*submenu\s+/ a\
 \	${root_arg:+root_arg=$root_arg}\\
-\	menu_item 'Start a pristine, transient $_TITLE' '$_BOOTDIR' '' (\$esp)/'$_live_dir' '$rootcfg' '$cfgargs'\\
-\	menu_item 'Start the saved -$_live_dir- image readonly via a RAM overlay' '$_BOOTDIR' '' (\$esp)/'$_live_dir' '$rootcfg' 'rd.ovl.flags=ro rd.live.overlay.readonly rd.live.overlay=UUID=$UUID:/$_live_dir/$ovl $cfgargs'\\
-\	menu_item 'Make a new, persistent overlay directory for the base image' '$_BOOTDIR' '' (\$esp)/'$_live_dir' '${rootcfg% rd\.live\.dir*}' 'rd.live.dir=PROMPT rd.live.overlay=UUID=$UUID,new:$_live_dir $cfgargs'\\
-\	menu_item 'Format a new, persistence partition for the -$_live_dir- base image' '$_BOOTDIR' '' (\$esp)/'$_live_dir' '${rootcfg% rd\.live\.dir*}' 'rd.live.dir=PROMPT rd.live.overlay=new:$_live_dir,PROMPTSZ,PROMPTFS $cfgargs'\\
-\	menu_item 'Reset any persistent overlay & start the -$_live_dir- base image' '$_BOOTDIR' '' (\$esp)/'$_live_dir' '$rootcfg' 'rd.live.overlay.reset rd.live.overlay=UUID=$UUID:/$_live_dir/$ovl $cfgargs'
+\	menu_item 'Start a pristine, transient $_TITLE' '$_BOOTDIR' '' (\$esp)/'$_ovl_dir' '$rootcfg' '$cfgargs'\\
+\	menu_item 'Start the saved -$_ovl_dir- image readonly via a RAM overlay' '$_BOOTDIR' '' (\$esp)/'$_ovl_dir' '$rootcfg' 'rd.ovl.flags=ro rd.live.overlay.readonly rd.live.overlay=UUID=$UUID:/$_ovl_dir/$ovl $cfgargs'\\
+\	menu_item 'Make a new, persistent overlay directory for the base image' '$_BOOTDIR' '' (\$esp)/'$_ovl_dir' '${rootcfg% rd\.ovl\.dir*}' 'rd.ovl.dir=PROMPT rd.live.overlay=UUID=$UUID,new_pt_for$_ovl_dir $cfgargs'\\
+\	menu_item 'Format a new, persistence partition for the -$_ovl_dir- base image' '$_BOOTDIR' '' (\$esp)/'$_ovl_dir' '${rootcfg% rd\.ovl\.dir*}' 'rd.ovl.dir=PROMPT rd.live.overlay=new_pt_for$_ovl_dir,PROMPTSZ,PROMPTFS $cfgargs'\\
+\	menu_item 'Reset any persistent overlay & start the -$_ovl_dir- base image' '$_BOOTDIR' '' (\$esp)/'$_ovl_dir' '$rootcfg' 'rd.live.overlay.reset rd.live.overlay=UUID=$UUID:/$_ovl_dir/$ovl $cfgargs'
                /^\s*menuentry\s+/ {
-               s;(Start \S+).*(in basic graphics mode).*('|\");Start the -$_live_dir- image \2 w/debug log\3;
+               s;(Start \S+).*(in basic graphics mode).*('|\");Start the -$_ovl_dir- image \2 w/debug log\3;
                }
                /^\s*$/ d
 " "$GRUB_cfg"
@@ -204,7 +204,7 @@ search --no-floppy --efidisk-only --set esp -u ${esp_uuid}
         rootcfg=${rootcfg%% *}
         sed -i -r "/./ {H;\$!d};x
         /^### BEGIN/,/^### ISOSCAN/ {
-        s;.*\/$_live_dir\/.* root=live:$rootcfg .*;;}" "$GRUB_cfg".multi
+        s;.*\/$_ovl_dir\/.* root=live:$rootcfg .*;;}" "$GRUB_cfg".multi
 
         # Append other pre-existing menus.
         cat "$GRUB_cfg".multi >> "$GRUB_cfg"
@@ -230,7 +230,7 @@ search --no-floppy --efidisk-only --set esp -u ${esp_uuid}
         # Condition of newly created persistence partition.
         sed -i -r "/^### ISOSCAN/, /^### end_ISOSCAN/ !{
 s/rd\.live\.overlay=\S*/rd\.live\.overlay=UUID=$UUID ${ROOTFLAGS:+rootflags=$ROOTFLAGS }/
-s;(new:.*|serial=.*/)\S*;\1 rd\.live\.overlay=UUID=$UUID ${ROOTFLAGS:+rootflags=$ROOTFLAGS };
+s;(new_pt_for.*|serial=.*/)\S*;\1 rd\.live\.overlay=UUID=$UUID ${ROOTFLAGS:+rootflags=$ROOTFLAGS };
 }" "$GRUB_cfg"
     }
     [ -e "$GRUB_cfg".set ] || set_flag

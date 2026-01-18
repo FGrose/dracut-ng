@@ -118,7 +118,7 @@ case "$livedev_fstype" in
         liverw=ro
         ;;
     *)
-        srcdir=${live_dir:=LiveOS}
+        srcdir=${ovl_dir:=LiveOS}
         liverw=rw
         ;;
 esac
@@ -129,9 +129,9 @@ rd_live_image=$(getarg rd.live.image) && {
     #  Case where partition specification is used for disk specification.
 }
 
-live_dir=$(getarg rd.live.dir) || live_dir=LiveOS
-[ "$live_dir" = PROMPT ] && prompt_for_livedir
-ln -sf "$live_dir" /run/initramfs/live_dir
+ovl_dir=$(getarg rd.ovl.dir -d rd.live.dir) || ovl_dir=LiveOS
+[ "$ovl_dir" = PROMPT ] && prompt_for_livedir
+ln -sf "$ovl_dir" /run/initramfs/ovl_dir
 
 [ "$partitionTable" ] || get_partitionTable "$diskDevice"
 
@@ -140,7 +140,7 @@ rd_live_overlay=$(getarg rd.live.overlay) && {
 
     # Set default ovlpath, if not specified.
     [ "$ovlpath" = auto ] && unset -v 'ovlpath'
-    : "${ovlpath:=/"$live_dir/overlay-$label-$uuid"}"
+    : "${ovlpath:=/"$ovl_dir/overlay-$label-$uuid"}"
     str_starts "$ovlpath" '/' || ovlpath=/"$ovlpath"
 }
 
@@ -152,7 +152,7 @@ case "$cfg" in
     ciso)
         [ "$OverlayFS" ] || ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.live.overlay.overlayfs=${OverlayFS:=LiveOS_rootfs}"
         set_FS_opts "$fsType" p_ptFlags
-        ovl_dir="$live_dir"
+        ovl_dir="$ovl_dir"
         ln -sf "$p_pt" /run/initramfs/p_pt
         fstype="${p_ptfsType:-auto}" srcPartition="$p_pt" \
             mountPoint="$mntDir" srcflags="$p_ptFlags" fsckoptions="$fsckoptions" \
@@ -210,7 +210,7 @@ esac
     # Copy content for new BOOTPATH.
     mount -n -m -t vfat -o check=s /run/initramfs/espdev /run/initramfs/ESP
 
-    mkdir -p "${BOOTPATH:=/run/initramfs/ESP/"$live_dir"}"
+    mkdir -p "${BOOTPATH:=/run/initramfs/ESP/"$ovl_dir"}"
     GRUB_cfg=/run/initramfs/ESP/EFI/BOOT/grub.cfg
 
     # Save a previous configuration, if present.
@@ -231,7 +231,7 @@ esac
     BOOTDIR=boot
     [ -d /run/initramfs/live/images/pxeboot ] && BOOTDIR=images
 
-    mkdir -p "${BOOTPATH:=/run/initramfs/ESP/"$live_dir"}"
+    mkdir -p "${BOOTPATH:=/run/initramfs/ESP/"$ovl_dir"}"
     if [ "$base_dir" ]; then
         cfg=ovl
         cp -au /run/initramfs/ESP/"$base_dir/$BOOTDIR" "$BOOTPATH" || Die "Copy of $base_dir/$BOOTDIR to $BOOTPATH failed."
@@ -263,7 +263,7 @@ do_live_overlay() {
             # We need $p_pt writable for persistent overlay storage.
             [ ! -w "$mntDir" ] && [ ! "$readonly_overlay" ] && mount -o remount,rw "$mntDir"
         else
-            ovl_dir="$live_dir"
+            ovl_dir="$ovl_dir"
             [ "$p_ptFlags" ] || set_FS_opts "${p_ptfsType:=$(blkid --probe --match-tag TYPE --output value --usages filesystem "$p_pt")}" p_ptFlags
             ln -sf "$p_pt" /run/initramfs/p_pt
             fstype="${p_ptfsType:-auto}" srcPartition="$p_pt" \
@@ -296,7 +296,7 @@ do_live_overlay() {
                     p_pt=$OVERLAY_LOOPDEV
                     # This leads to an overmount of $mntDir in /sbin/do-overlay
                     ovlpath=/overlayfs
-                    live_dir=''
+                    ovl_dir=''
                     [ "$OverlayFS" ] || ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.overlayfs=${OverlayFS:=LiveOS_rootfs}"
                     setup=setup
                     ;;
@@ -492,7 +492,7 @@ if [ "$OverlayFS" ]; then
         OverlayFS="$rd_live_overlay"
         etc_kernel_cmdline="$etc_kernel_cmdline rd.overlayfs=$rd_live_overlay"
     }
-    ovl_dir="$live_dir"
+    ovl_dir="$ovl_dir"
     # Add an OverlayFS for persistent writes.
     [ "$p_pt" ] && do_overlayfs
 else
