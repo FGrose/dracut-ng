@@ -1,7 +1,6 @@
 #!/bin/sh
-type getarg > /dev/null 2>&1 || . /lib/dracut-lib.sh
 
-getargbool 0 rd.overlay || return 0
+[ -h /run/initramfs/p_pt ] || return 0
 
 # /run is mounted at $NEWROOT/run after switch_root;
 # bind-mount it in place so that updates for /run actually land in /run.
