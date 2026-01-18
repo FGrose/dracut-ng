@@ -9,7 +9,7 @@ btrfs_snap="$(getarg rd.btrfs.snapshot)" && {
     ln -s "$btrfs_snap" /run/initramfs/btrfs_snap
     : "${ovlfs_name:=os_snapfs}"
 }
-p_pt="$(getarg rd.overlayfs)" || [ "$btrfs_snap" ] || exit 0
+p_pt="$(getarg rd.overlay)" || [ "$btrfs_snap" ] || exit 0
 
 load_fstype overlay || Die 'OverlayFS is required but unavailable.'
 command -v get_p_pt > /dev/null || . /lib/overlayfs-lib.sh

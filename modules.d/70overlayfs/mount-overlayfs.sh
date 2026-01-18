@@ -2,7 +2,7 @@
 
 command -v getarg > /dev/null || . /lib/dracut-lib.sh
 
-OverlayFS=$(getarg rd.overlayfs) || exit 0
+OverlayFS=$(getarg rd.overlay) || exit 0
 
 command -v get_p_pt > /dev/null || . /lib/overlayfs-lib.sh
 volatile=volatile
@@ -10,7 +10,7 @@ get_p_pt "$OverlayFS" os_rootfs OverlayFS
 [ "$OverlayFS" = off ] && exit 0
 
 findmnt "${ovlfs_name:=os_rootfs}" > /dev/null 2>&1 || {
-    [ -h /run/overlayfs ] && getargbool 0 rd.overlayfs.readonly && {
+    [ -h /run/overlayfs ] && getargbool 0 rd.overlay.readonly && {
         readonly_overlay=--readonly
         volatile=volatile
     }

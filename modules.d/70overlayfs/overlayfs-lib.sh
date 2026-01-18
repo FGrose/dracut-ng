@@ -69,7 +69,7 @@ overlayfs_mount_generator() {
         echo Before=initrd-root-fs.target
         echo [Mount]
         echo Where=/sysroot
-        getargbool 0 rd.overlayfs.readonly && {
+        getargbool 0 rd.overlay.readonly && {
             readonly_overlay=--readonly
             volatile=volatile
         }
@@ -143,13 +143,13 @@ do_overlayfs() {
                 '  All root filesystem changes will be lost on shutdown.' \
                 '  Press [Enter] to continue.'
         fi
-        if [ "${OverlayFS}$rd_overlayfs" ] && ! [ -h /run/overlayfs-r ]; then
+        if [ "${OverlayFS}$rd_overlay" ] && ! [ -h /run/overlayfs-r ]; then
             prompt_message \
                 '   Failed to find a persistent overlay; using a temporary one.' \
                 '  All root filesystem changes will be lost on shutdown.' \
                 '  Press [Enter] to continue.'
             unset -v 'readonly_overlay'
-            ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.overlayfs.readonly=0"
+            ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.overlay.readonly=0"
         fi
         [ "$ETC_KERNEL_CMDLINE" ] && {
             mkdir -p /etc/kernel

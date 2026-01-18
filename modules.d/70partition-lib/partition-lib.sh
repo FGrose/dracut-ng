@@ -575,7 +575,7 @@ parse_cfgArgs() {
                 base_dir="${1##*:}"
                 cfg=ovl:"${1%:*}"
                 # Trigger default ovlpath specification.
-                rd_live_overlay=''
+                rd_overlay=''
                 ;;
             esp=*)
                 szESP=${1#esp=}
@@ -622,11 +622,11 @@ prep_Partition() {
         && Die "The specified persistence partition, $p_pt, is not recognized."
     if [ "$p_pt" ] && ! [ "$removePt" ]; then
         info "Skipping overlay creation: a persistence partition already exists."
-        rd_live_overlay="$p_pt"
-        ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.live.overlay=$p_pt rd.live.overlay.overlayfs"
+        rd_overlay="$p_pt"
+        ETC_KERNEL_CMDLINE="$ETC_KERNEL_CMDLINE rd.overlay=$p_pt"
         return 0
-    elif [ ! "$rd_live_overlay" ]; then
-        info "Skipping overlay creation: kernel command line parameter 'rd.live.overlay' is not set."
+    elif [ ! "$rd_overlay" ]; then
+        info "Skipping overlay creation: kernel command line parameter 'rd.overlay' is not set."
         return 1
     fi
     freeSpaceEnd=$((szDisk - 1048576))

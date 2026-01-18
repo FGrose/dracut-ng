@@ -33,7 +33,7 @@ client_run() {
     test_marker_reset
     "$testdir"/run-qemu \
         "${disk_args[@]}" \
-        -append "$TEST_KERNEL_CMDLINE rd.overlayfs=1 root=live:/dev/disk/by-label/dracut $client_opts" \
+        -append "$TEST_KERNEL_CMDLINE rd.overlay=1 root=live:/dev/disk/by-label/dracut $client_opts" \
         -initrd "$TESTDIR"/initramfs.testing
 
     if ! test_marker_check; then
@@ -63,7 +63,7 @@ test_run() {
     rootPartitions=$(sfdisk -d "$TESTDIR"/root.img | grep -c 'root\.img[0-9]')
     [ "$rootPartitions" -eq 1 ]
 
-    client_run "autooverlay" "rd.live.image rd.live.overlay=LABEL=persist rd.ovl.dir=LiveOS"
+    client_run "autooverlay" "rd.live.image rd.overlay=LABEL=persist rd.ovl.dir=LiveOS"
 
     rootPartitions=$(sfdisk -d "$TESTDIR"/root.img | grep -c 'root\.img[0-9]')
     [ "$rootPartitions" -eq 2 ]
