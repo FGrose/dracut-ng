@@ -658,6 +658,8 @@ parse_cfgArgs() {
         ovl | img)
             missing_or_auto_case() {
                 p_ptfsType=${1:-${p_ptfsType:-ext4}}
+                espStart=1
+                cfg=ovl
             }
             ;;
         snp)
@@ -710,10 +712,6 @@ parse_cfgArgs() {
             ropt)
                 cfg="$1"
                 ;;
-            auto)
-                espStart=1
-                cfg=ovl
-                ;;
             iso | ciso)
                 cfg="$1"
                 [ -h /run/initramfs/isofile ] && isofile=$(readlink -f /run/initramfs/isofile)
@@ -748,18 +746,25 @@ parse_cfgArgs() {
             PROMPTDR)
                 prompt_for_path "$1"
                 ;;
-            PROMPTSZ)
-                # Assigns sizeGiB.
-                prompt_for_size "$1"
-                ;;
             PROMPTFS)
                 # Assigns fsType and rootflags.
                 prompt_for_fstype
+                ;;
+            PROMPTSZ)
+                # Assigns size.
+                prompt_for_size "$1"
+                ;;
+            [1-9]% | [1-9][0-9]%)
+                size="$1"
+                ;;
+            [1-9][Gg] | [1-9][0-9][Gg] | [1-9][0-9][0-9][MmGg] | [1-9][0-9][0-9][0-9][MmGg])
+                size="$1"
                 ;;
             *[!0-9]* | 0*)
                 # Anything but a positive integer:
                 case "$1" in
                     *=?*)
+                        unset -v 'volatile'
                         p_pt="$(label_uuid_to_dev "${1%%:*}")"
                         ln -sf "$p_pt" /run/initramfs/p_pt
                         strstr "$1" ":" && {
@@ -772,7 +777,7 @@ parse_cfgArgs() {
                 ;;
             *)
                 # any positive integer:
-                sizeGiB=$1
+                size=$1
                 ;;
         esac
         shift
@@ -914,8 +919,12 @@ prep_Partition() {
         warn "Skipping partition creation: less than 256 MiB of space is available."
         return 1
     fi
-    sizeGiB=${sizeGiB:+$((sizeGiB << 30))}
-    partitionEnd="$((partitionStart + ${sizeGiB:-$szDisk} - 512))"
+    case "$size" in
+        *[Mm]) size=$((${size%[Mm]} << 20)) ;;
+        *) size=$((${size%[Gg]} << 30)) ;; # Default
+    esac
+    size=${size:+$size}
+    partitionEnd="$((partitionStart + ${size:-$szDisk} - 512))"
     [ "$partitionEnd" -gt "$freeSpaceEnd" ] && partitionEnd="$freeSpaceEnd"
     p_ptCmd="--align optimal mkpart ${ovl_dir}.. ${partitionStart}B ${partitionEnd}B"
 
