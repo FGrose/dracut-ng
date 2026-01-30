@@ -15,7 +15,7 @@ get_p_pt "$OverlayFS" os_rootfs OverlayFS
 [ "$OverlayFS" = off ] && exit 0
 
 findmnt "${ovlfs_name:=os_rootfs}" > /dev/null 2>&1 || {
-    [ -h /run/overlayfs ] && getargbool 0 rd.overlay.readonly && {
+    [ "$p_pt" ] && getargbool 0 rd.overlay.readonly && {
         readonly_overlay=--readonly
         volatile=volatile
     }

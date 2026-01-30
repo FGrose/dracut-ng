@@ -9,10 +9,9 @@ get_p_pt() {
     case "${1%%[=/]*}" in
         0 | no | off) eval "$3=off" ;;
         '' | 1) ovlfs_name="${2-"${ovlfs_name-os_rootfs}"}" ;;
-        "${1%%,*}") ovlfs_name=${1%%,*} ;;
-        *) # devspec present
-            unset -v 'volatile'
-            IFS=, parse_cfgArgs "$1"
+        *)
+            command -v parse_cfgArgs > /dev/null || . /lib/partition-lib.sh
+            IFS=, parse_cfgArgs ovl,"$1"
             ;;
     esac
 }

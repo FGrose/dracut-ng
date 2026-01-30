@@ -35,7 +35,7 @@ set_FS_opts() {
 
 update_BootConfig() {
     local _ovl_dir root rootcfg livedev ovl_spec ovl _TITLE GRUB_cfg cfg UUID ovl_uuid sedcmd label
-    read -r cfg < /run/initramfs/cfg
+    cfg=$(readlink /run/initramfs/cfg)
     cfg="${cfg%%[:,+]*}"
     if [ "$mntDir" ]; then
         # OverlayFS present.

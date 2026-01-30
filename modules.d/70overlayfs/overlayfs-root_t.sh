@@ -4,7 +4,7 @@
 chcon -t root_t / /run/overlayfs /run/ovlwork
 
 # Restore contexts changed in overlayfs-pre-pivot-actions.sh, which added
-#  content to /usr/bin and /usr/lib/systemd/system in the OverlayFS.
+#  content to /usr/bin and /usr/lib/systemd/system in the OverlayFS sans SELinux.
 chcon -t usr_t /usr
 chcon -t lib_t /usr/lib /usr/lib/systemd
 chcon -t bin_t /usr/bin /usr/bin/overlayfs-root_t.sh
