@@ -17,5 +17,8 @@ if [ -b /run/initramfs/p_pt ]; then
     }
 else
     # For temporary overlays:
-    mkdir -m 0755 -p /run/overlayfs /run/ovlwork
+    mount -m -t tmpfs os_tmp -o mode=0755${size:+,size="$size"} /run/ovl
+    mkdir -m 0755 -p /run/ovl/upperdir /run/ovl/workdir
+    ln -s /run/ovl/upperdir /run/overlayfs
+    ln -s /run/ovl/workdir /run/ovlwork
 fi

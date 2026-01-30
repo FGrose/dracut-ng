@@ -199,7 +199,7 @@ esac
         cp -au /run/initramfs/live/System /run/initramfs/ESP
         cp -au /run/initramfs/live/mach_kernel /run/initramfs/ESP
     }
-    printf '%s' "$cfg" > /run/initramfs/cfg
+    ln -s "$cfg" /run/initramfs/cfg
 }
 
 # overlay setup helper function

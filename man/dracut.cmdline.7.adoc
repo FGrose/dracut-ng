@@ -1248,7 +1248,8 @@ lower and the upper.  If an OverlayFS upper directory for a base root
 filesystem is not present at boot time, a tmpfs directory will be created at
 `/run/overlayfs` in the `/run` tmpfs to provide temporary read-write storage.
 This filesystem is typically sized to a default of one half of the physical RAM
-in the system. The command: `mount -o remount,size=<nbytes> /run` may be used
+in the system. One may use the *_rd.overlay=[,<size>]_* option to alter the
+default; or the command: `mount -o remount,size=<nbytes> /run` may be used
 to resize this virtual filesystem after booting. An entry like the following in
 `/etc/fstab` will alter the default:
 `none /run tmpfs defaults,size=<size|%> 0 0`
@@ -1266,7 +1267,7 @@ persistence disk device.
 
 For live media images, see the link:https://github.com/dracut-ng/dracut-ng/edit/main/man/dracut.cmdline.7.adoc#booting-live-images[*Booting live images*] section below.
 
-**rd.overlay=**{[1|__<source_name>__]|[,__<devspec>__[:__<pathspec>__]][,subvol=<subvol_path>]|0|no|off}::
+**rd.overlay=**{[1|__<source_name>__[,<size>[,__<devspec>__[:__<pathspec>__[,subvol=<subvol_path>]]]]]|0|no|off}::
 Enables the use of the *OverlayFS* kernel module ('overlay'), if available,
 to provide a copy-on-write union directory for the root filesystem.
 +
@@ -1287,6 +1288,13 @@ https://docs.kernel.org/filesystems/overlayfs.html#changes-to-underlying-filesys
 * {[1|*_<source_name>_*]} specifies an OverlayFS overlay, optionally setting
 the OverlayFS mount source name to _<source_name>_ instead of the default
 _os_rootfs_.
+* *_<size>_* specifies the size of the tmpfs mounted for a virtual or transient
+overlay. It may be specified as a percent of physical RAM with `[1-9]%` |
+`[1-9][0-9]%`, or as a whole integer that will be interpreted as _<size>GiB_,
+or it may be requested with units `1-9999G` or `100-9999M` for GiB and MiB.
+If the size greater than the physical RAM, the tmpfs will begin to use
+available swap space with its slower disk speeds once the available RAM is
+exhausted.
 * *_<devspec>_* specifies the path to a device with a mountable filesystem.
 *_<devspec>_* may be in the form of
 +
@@ -1590,8 +1598,7 @@ By default, this is __squashfs.img__.
 Copy the complete image to RAM and use this for booting. This is useful
 when the image resides on, _e.g._, a DVD which needs to be ejected later on.
 
-
-**rd.overlay=**{[{__<size>__|PROMPTSZ}[,{__<fstype>__|PROMPTFS}[,new_pt_for:__<ovl_dir>__[,recreate[=__<devspec>__][,{__<devspec>__|PROMPTPT|PROMPTDK}[:{__<pathspec>__|auto}}[,ea=__<extra_attr__,__s>__]]]]]]]|none}::
+**rd.overlay=**{[{__<size>__|PROMPTSZ}[,{__<fstype>__|PROMPTFS}[,new_pt_for:__<ovl_dir>__[,recreate[=__<devspec>__][,{__<devspec>__|PROMPTPT|PROMPTDK}[:{__<pathspec>__|auto}[,ea=__<extra_attr__,__s>__]]]]]]]|none}::
 Manage the specification of a persistent overlay that can be used to save
 changes made to the root filesystem within the +
 **root=**live:__<device specification>__ or **root=**live:__<url>__ device.
@@ -1606,7 +1613,7 @@ _rd.overlay_ is not set to 1, the overlay type (either Device-mapper or
 OverlayFS) will be detected and it will be used.
 +
 --
-* The parameter with no or any of the filesystem related or *_<size>_*
+* The parameter alone or with any of the filesystem related or *_<size>_*
 arguments specifies the creation of a persistence partition named 
 __LiveOS_persist__ for the overlay in adequate free space at the end of the
 **root=**live:__<device specification>__ disk on its first boot.
@@ -1615,11 +1622,13 @@ NOTE: The operating system distribution should supply a _dracut_
 <distribution>-live-lib module to edit the boot loader menu so that subsequent
  boots will ignore any filesystem related or partition size arguments.
 +
-* *_<size>_* specifies a partition size in gigabytes for the partition. If
-a size is not provided, the partition will be made the size of the free space
-at the end of the disk device. A minimum of 256 MiB of free space is required.
-If *_<size>_* is larger than the free space, the free space value will be
-used. If ''0'' is provided, no overlay will be provided.
+* *_<size>_* specifies a partition size as a whole integer that will be
+interpreted as _<size>GiB_, or it may be requested with units `1-9999G` or
+`100-9999M` for GiB and MiB. If a size is not provided, the partition will be
+made the size of the free space at the end of the disk device. A minimum of
+256 MiB of free space is required. If *_<size>_* is larger than the free space,
+the free space value will be used. If ''0'' is provided, no overlay will be
+provided.
 * *PROMPTSZ* may be entered to invoke an interactive dialog to specify the
 partition size in whole gigabytes.
 * *_<fstype>_* is the filesystem type to use for the persistence partition.
