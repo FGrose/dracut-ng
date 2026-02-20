@@ -1166,3 +1166,13 @@ load_fstype() {
     done < /proc/filesystems
     modprobe "$1"
 }
+
+# get os-release value $1 = parameter, example: ID
+get_os_release_datum() {
+    local os_release=/etc/os-release
+    [ -f "$os_release" ] || return 1
+    (
+        . "$os_release"
+        eval "printf '%s' \"\$$1\""
+    )
+}

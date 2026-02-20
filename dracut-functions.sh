@@ -809,6 +809,16 @@ get_ucode_file() {
     fi
 }
 
+# get os-release value $1 = parameter, example: ID
+get_os_release_datum() {
+    local os_release="$dracutsysrootdir"/etc/os-release
+    [ -f "$os_release" ] || return 1
+    (
+        . "$os_release"
+        eval "printf '%s' \"\$$1\""
+    )
+}
+
 # Not every device in /dev/mapper should be examined.
 # If it is an LVM device, touch only devices which have /dev/VG/LV symlink.
 lvm_internal_dev() {
