@@ -74,21 +74,20 @@ install() {
 
     [ -e "${initdir}/usr/lib" ] || mkdir -m 0755 -p "${initdir}"/usr/lib
 
-    local VERSION=""
-    local PRETTY_NAME=""
     # Derive an os-release file from the host, if it exists
     if [[ -e "${dracutsysrootdir-}/etc/os-release" ]]; then
         # shellcheck disable=SC1090
         . "${dracutsysrootdir-}"/etc/os-release
         grep -hE -ve '^VERSION=' -ve '^PRETTY_NAME' "${dracutsysrootdir-}"/etc/os-release > "${initdir}"/usr/lib/initrd-release
-        [[ -n ${VERSION} ]] && VERSION+=" "
-        [[ -n ${PRETTY_NAME} ]] && PRETTY_NAME+=" "
+        VERSION="${VERSION#\"}"
+        PRETTY_NAME="${PRETTY_NAME#\"}"
     fi
-    VERSION+="dracut-$DRACUT_VERSION"
-    PRETTY_NAME+="dracut-$DRACUT_VERSION (Initramfs)"
+
     {
-        echo "VERSION=\"$VERSION\""
-        echo "PRETTY_NAME=\"$PRETTY_NAME\""
+        [[ $NAME ]] || echo "NAME=Linux"
+        [[ $ID ]] || echo "ID=linux"
+        echo "VERSION=\"${VERSION:+"${VERSION%\"}" }dracut-$DRACUT_VERSION\""
+        echo "PRETTY_NAME=\"${PRETTY_NAME:+"${PRETTY_NAME%\"}" }dracut-$DRACUT_VERSION (Initramfs)\""
         # This addition is relatively new, intended to allow software
         # to easily detect the dracut version if need be without
         # having it mixed in with the real underlying OS version.

@@ -1187,3 +1187,16 @@ load_fstype() {
     done < /proc/filesystems
     modprobe "$1"
 }
+
+# get os-release value $1 = parameter, example: ID
+get_os_release_datum() {
+    local _line
+    # Read from end to obtain the last entry.
+    tac /etc/os-release | while read -r _line || [ "$_line" ]; do
+        [ "$_line" = "$1"=* ] && {
+            printf '%s' "${_line#"$1"=}"
+            return 0
+        }
+    done
+    return 1
+}
