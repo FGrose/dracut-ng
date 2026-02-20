@@ -100,19 +100,30 @@ install() {
 
     inst_simple "$moddir/insmodpost.sh" /sbin/insmodpost.sh
 
-    if ! dracut_module_included "systemd"; then
+    dracut_module_included "systemd" || {
         inst_multiple switch_root || dfatal "Failed to install switch_root"
         inst_script "$moddir/init.sh" "/init"
         inst_hook cmdline 01 "$moddir/parse-kernel.sh"
         inst_hook cmdline 10 "$moddir/parse-root-opts.sh"
 
+        # Synthesize a minimal initrd-release.
+        [[ -e "${dracutsysrootdir-}/etc/os-release" ]] && {
+            # shellcheck disable=SC1090
+            . "${dracutsysrootdir-}/etc/os-release"
+        }
+        [ -e "${initdir}/usr/lib" ] || mkdir -m 0755 -p "${initdir}/usr/lib"
         {
-            echo "NAME=dracut"
-            echo "ID=dracut"
-            echo "VERSION_ID=\"$DRACUT_VERSION\""
+            echo "NAME=\"${NAME:-Linux}\""
+            echo "ID=${ID:-linux}"
+            echo "VERSION=\"$VERSION dracut-$DRACUT_VERSION\""
+            echo "PRETTY_NAME=\"$PRETTY_NAME dracut-$DRACUT_VERSION (Initramfs)\""
             echo 'ANSI_COLOR="0;34"'
-        } > "${initdir}"/usr/lib/initrd-release
-    fi
+            echo "DRACUT_VERSION=\"$DRACUT_VERSION\""
+        } > "${initdir}/usr/lib/initrd-release"
+        ln -sf ../usr/lib/initrd-release "$initdir/etc/initrd-release"
+        ln -sf initrd-release "$initdir/usr/lib/os-release"
+        ln -sf initrd-release "$initdir/etc/os-release"
+    }
 
     ln -fs /proc/self/mounts "$initdir/etc/mtab"
     if [[ $ro_mnt == yes ]]; then
