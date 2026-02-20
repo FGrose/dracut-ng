@@ -283,15 +283,7 @@ for FSIMG in "$roroot_image" rorootfs.img rootfs.img ext3fs.img; do
     [ -e "$FSIMG" ] && break
 done
 if [ -e "$SQUASHED" ]; then
-    if [ "$live_ram" ]; then
-        imgsize=$(($(blkid --probe --match-tag FSSIZE --output value --usages filesystem "$SQUASHED") / (1024 * 1024)))
-        check_live_ram $imgsize
-        echo 'Copying live image to RAM...' > /dev/kmsg
-        echo ' (this may take a minute)' > /dev/kmsg
-        dd if="$SQUASHED" of=/run/initramfs/squashed.img bs=512 2> /dev/null
-        echo 'Done copying live image to RAM.' > /dev/kmsg
-        SQUASHED=/run/initramfs/squashed.img
-    fi
+    [ "$live_ram" ] && src="$SQUASHED" dst=/run/initramfs/squashfs.img var=SQUASHED dd_copy
 
     SQUASHED_LOOPDEV=$(losetup -f)
     losetup -r "$SQUASHED_LOOPDEV" "$SQUASHED"
@@ -324,13 +316,7 @@ else
     if [ -e /run/initramfs/live/"$srcdir"/rootfs.img ]; then
         FSIMG=/run/initramfs/live/"$srcdir"/rootfs.img
     fi
-    if [ "$live_ram" ]; then
-        echo 'Copying live image to RAM...' > /dev/kmsg
-        echo ' (this may take a minute or so)' > /dev/kmsg
-        dd if="$FSIMG" of=/run/initramfs/rootfs.img bs=512 2> /dev/null
-        echo 'Done copying live image to RAM.' > /dev/kmsg
-        FSIMG=/run/initramfs/rootfs.img
-    fi
+    [ "$live_ram" ] && src="$FSIMG" dst=/run/initramfs/rootfs.img var=FSIMG dd_copy
 fi
 
 if [ "$FSIMG" ]; then
