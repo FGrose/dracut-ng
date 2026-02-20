@@ -5,6 +5,30 @@ run_parted() {
     LC_ALL=C flock "$1" parted --script "$@"
 }
 
+# Copy image file or device with dd.
+# call in this fashion:
+#   src=<source image file or block device>
+#   dst=<destination path>
+#     [var=<name of variable holding the destination path>]
+#     [sz=<image size in bytes>]
+#     [msg=<message text for copy to persistent media>] dd_copy
+dd_copy() {
+    local src dst var sz msg ddir
+    ddir=${dst%/*}
+    [ "$ddir" != /dev ] && [ "$(stat -f -c %T "$ddir")" = tmpfs ] && {
+        src=$(readlink -f "$src")
+        [ "$sz" ] || sz=$(stat -c %s -- "$src")
+        check_live_ram "$((sz >> 20))"
+    }
+    [ "$ddir" = /dev ] && ddir="$diskDevice"
+
+    echo "Copying $src ${msg:=to RAM...}" > /dev/kmsg
+    echo ' (this may take a minute or so)' > /dev/kmsg
+    LC_ALL=C flock "$ddir" dd if="$src" of="$dst" ${sz:+count="${sz}"B} bs=8M iflag=nocache oflag=direct status=progress 2> /dev/kmsg
+    eval "${var:=_}=$dst"
+    echo "Done copying $src $msg" > /dev/kmsg
+}
+
 # Determine some attributes for the device - $1
 get_diskDevice() {
     local - dev n syspath p_path ptInfo
