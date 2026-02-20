@@ -259,15 +259,7 @@ for FSIMG in "$roroot_image" rorootfs.img rootfs.img ext3fs.img rootfs.tgz; do
     }
 done
 if [ -e "$FSIMG" ]; then
-    if [ "$live_ram" ]; then
-        imgsize=$(($(stat -c %s -- "$FSIMG") / (1024 * 1024)))
-        check_live_ram $imgsize
-        echo 'Copying live image to RAM...' > /dev/kmsg
-        echo ' (this may take a minute)' > /dev/kmsg
-        dd if="$FSIMG" of=/run/initramfs/rootfs.img bs=512 2> /dev/null
-        echo 'Done copying live image to RAM.' > /dev/kmsg
-        FSIMG=/run/initramfs/rootfs.img
-    fi
+    [ "$live_ram" ] && src="$FSIMG" dst=/run/initramfs/rootfs.img var=FSIMG dd_copy
     BASE_LOOPDEV=$(losetup -f)
     [ "$fsType" = unknown ] || {
         losetup -r "$BASE_LOOPDEV" "$FSIMG"
