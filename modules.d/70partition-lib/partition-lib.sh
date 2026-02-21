@@ -876,6 +876,10 @@ parse_cfgArgs() {
                     esac
                 }
                 ;;
+            auto)
+                espStart=1
+                cfg=ovl
+                ;;
             ea=?*)
                 extra_attrs="${*}"
                 extra_attrs=${extra_attrs#ea=}
@@ -966,11 +970,7 @@ prep_Partition() {
             freeSpaceStart=${2%B}
             ;;
     esac
-    [ "$removePt" ] || {
-        freeSpaceStart=$((${3%B} + 1))
-        # dd'd .iso size
-        sz=$((freeSpaceStart + 32768))
-    }
+    [ "$removePt" ] || freeSpaceStart=$((${3%B} + 1))
     byteMax=$((szDisk - 268435456))
 
     # Make optimalIO alignment at least 4 MiB.
@@ -994,7 +994,7 @@ prep_Partition() {
     optimize "$partitionStart" partitionStart
 
     [ "$espStart" ] && {
-        espCmd="${espCmd:+rm "${espNbr:=1}"} --align optimal mkpart ESP fat32 ${espStart}B ${espEnd:=$((partitionStart - 1))}B \
+        espCmd="${espCmd:+rm "${espNbr:=1}"} --align optimal mkpart ESP fat32 ${espStart}B $((partitionStart - 1))B \
             type $espNbr c12a7328-f81f-11d2-ba4b-00a0c93ec93b"
     }
 
@@ -1003,14 +1003,16 @@ prep_Partition() {
         warn "Skipping partition creation: less than 256 MiB of space is available."
         return 1
     fi
-    case "$size" in
-        *[Mm]) size=$((${size%[Mm]} << 20)) ;;
-        *) size=$((${size%[Gg]} << 30)) ;; # Default
-    esac
-    size=${size:+$size}
-    partitionEnd="$((partitionStart + ${size:-$szDisk} - 512))"
+    sizeGiB=${sizeGiB:+$((sizeGiB << 30))}
+    partitionEnd="$((partitionStart + ${sizeGiB:-$szDisk} - 512))"
     [ "$partitionEnd" -gt "$freeSpaceEnd" ] && partitionEnd="$freeSpaceEnd"
     newptCmd="--align optimal mkpart ${ovl_dir}.. ${partitionStart}B ${partitionEnd}B"
+
+    [ "$espCmd" ] && {
+        udevadm trigger --name-match "$ESP" --action add --settle > /dev/kmsg 2>&1
+        mkfs_config fat ESP $((partitionStart - espStart))
+        create_Filesystem fat "$ESP"
+    }
 
     # LiveOS persistence partition type
     newptType=ccea7cb3-70ba-4c31-8455-b906e46a00e2
@@ -1022,12 +1024,6 @@ prep_Partition() {
         ${newptCmd}
     : "${cfg:=ovl}"
 
-    [ "$espCmd" ] && {
-        udevadm trigger --name-match "$ESP" --action add --settle > /dev/kmsg 2>&1
-        mkfs_config fat ESP $((partitionStart - espStart))
-        create_Filesystem fat "$ESP"
-    }
-
     # Set new partition type with command - $@
     set_pt_type() {
         get_partitionTable "$diskDevice"
@@ -1038,15 +1034,12 @@ prep_Partition() {
     # shellcheck disable=SC2086
     set_pt_type $newptCmd
 
-    [ "$p_pt" ] || {
-        p_pt=$(aptPartitionName "$diskDevice" "$newptNbr")
+    p_Partition=$(aptPartitionName "$diskDevice" "$newPtNbr")
+    udevadm trigger --name-match "$p_Partition" --action add --settle > /dev/kmsg 2>&1
+    ln -sf "$p_Partition" /run/initramfs/p_pt
 
-        udevadm trigger --name-match "$p_pt" --action add --settle > /dev/kmsg 2>&1
-        ln -sf "$p_pt" /run/initramfs/p_pt
-
-        [ "${p_ptFlags+set}" ] || set_FS_options "${p_ptfsType:-ext4}" p_ptFlags
-        mkfs_config "${p_ptfsType:=ext4}" LiveOS_persist $((partitionEnd - partitionStart + 1)) "${extra_attrs}"
-        wipefs --lock -af${QUIET:+q} "$p_pt"
-        create_Filesystem "$p_ptfsType" "$p_pt"
-    }
+    [ "${p_ptFlags+set}" ] || set_FS_options "${p_ptfsType:-ext4}" p_ptFlags
+    mkfs_config "${p_ptfsType:=ext4}" LiveOS_persist $((partitionEnd - partitionStart + 1)) "${extra_attrs}"
+    wipefs --lock -af${QUIET:+q} "$p_Partition"
+    create_Filesystem "$p_ptfsType" "$p_Partition"
 }
