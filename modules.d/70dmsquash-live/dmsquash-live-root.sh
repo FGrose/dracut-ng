@@ -32,6 +32,7 @@ uuid="${uuid%%\"*}"
 label="${devInfo#*LABEL=\"}"
 label="${label%%\"*}"
 
+echo "$uuid" > /run/initramfs/live_uuid
 load_fstype "$livedev_fstype"
 live_dir=$(getarg rd.live.dir) || live_dir=LiveOS
 roroot_image=$(getarg rd.live.rorootimg -d -y rd.live.squashimg) || roroot_image=squashfs.img
@@ -72,6 +73,16 @@ rd_overlay=$(get_rd_overlay) && {
 }
 
 [ "$partitionTable" ] || get_partitionTable "$diskDevice"
+
+IFS=: parse_pt_row "$(pt_row 2)"
+# Check partitionTable for dd'd .iso ESP.
+[ "$ptLabel" = Appended2 ] && {
+    espNbr=2
+    ESP=$(aptPartitionName "$diskDevice" 2)
+    ln -sf "$ESP" /run/initramfs/espdev
+    [ "$size$p_ptfsType" ] && espStart=1
+    unset -v 'p_pt'
+}
 
 case "$livedev_fstype" in
     iso9660 | udf)
@@ -130,6 +141,13 @@ esac
     fi
     [ "$?" -eq 0 ] || Die "Failed to mount block device, $livedev, of live image."
 }
+
+[ "$ESP" ] || get_ESP "$diskDevice"
+if [ "${DRACUT_SYSTEMD-}" ]; then
+    systemctl start run-initramfs-ESP.mount
+else
+    mount -n -m -t vfat -o nocase,shortname=win95 /run/initramfs/espdev /run/initramfs/ESP
+fi
 
 # overlay setup helper function
 do_live_overlay() {

@@ -143,6 +143,18 @@ get_ESP() {
     ln -sf "$ESP" /run/initramfs/espdev
 }
 
+# Recommended ESP size in MiB
+get_sz_forESP() {
+    if [ "$szDisk" -lt 34359738368 ]; then
+        # Minimum ESP size of 512 MiB for disks smaller than 32 GiB.
+        echo 512
+    else
+        # Provide ESP with 128 MiB of additional space per 16 GiB of free disk
+        #  space for multi image boots.
+        echo "$(((((szDisk - freeSpaceStart) / 17179869184) << 7) + 512))"
+    fi
+}
+
 # Additional mount flags appended to any from the command line for fsType.
 # Set default mkfs extra attributes, if none from the command line.
 # $1 - fsType
@@ -870,7 +882,6 @@ parse_cfgArgs() {
                 ISS=${1%%/serial/*}
                 diskDevice=$(ID_SERIAL_SHORT_to_disc "${ISS#serial=}")
                 echo "$diskDevice" > /run/initramfs/diskdev
-                get_partitionTable "$diskDevice"
                 ptSpec=${1#*/serial/}
                 [ "$ptSpec" ] && {
                     case "$ptSpec" in
@@ -883,6 +894,14 @@ parse_cfgArgs() {
                             ;;
                     esac
                 }
+                ;;
+            auto)
+                espStart=1
+                cfg=ovl
+                ;;
+            esp=*)
+                szESP=${1#esp=}
+                espStart=1
                 ;;
             ea=?*)
                 extra_attrs="${*}"
@@ -988,11 +1007,7 @@ prep_Partition() {
             freeSpaceStart=${2%B}
             ;;
     esac
-    [ "$removePt" ] || {
-        freeSpaceStart=$((${3%B} + 1))
-        # dd'd .iso size
-        sz=$((freeSpaceStart + 32768))
-    }
+    [ "$removePt" ] || freeSpaceStart=$((${3%B} + 1))
     byteMax=$((szDisk - 268435456))
 
     # Make optimalIO alignment at least 4 MiB.
@@ -1004,20 +1019,33 @@ prep_Partition() {
         eval "$2"=$((($1 + optimalIO - 1) / optimalIO * optimalIO))
     }
 
+    [ "$espStart" ] && {
+        # Format ESP.
+        espStart=${2%B}
+        freeSpaceStart=$((espStart + (${szESP:=$(get_sz_forESP)} << 20) + 1))
+
+        optimize "$espStart" espStart
+    }
+
     partitionStart=$freeSpaceStart
     optimize "$partitionStart" partitionStart
+
+    [ "$espStart" ] && {
+        get_ESP "$diskDevice"
+        espCmd="rm $espNbr \
+            set 1 hidden off \
+            --align optimal mkpart ESP fat32 ${espStart}B ${espEnd:=$((partitionStart - 1))}B \
+            type $espNbr c12a7328-f81f-11d2-ba4b-00a0c93ec93b \
+            set $espNbr hidden on"
+    }
 
     if [ "$partitionStart" -gt "$byteMax" ]; then
         # Allow at least 256 MiB for persistence partition.
         warn "Skipping partition creation: less than 256 MiB of space is available."
         return 1
     fi
-    case "$size" in
-        *[Mm]) size=$((${size%[Mm]} << 20)) ;;
-        *) size=$((${size%[Gg]} << 30)) ;; # Default
-    esac
-    size=${size:+$size}
-    partitionEnd="$((partitionStart + ${size:-$szDisk} - 512))"
+    sizeGiB=${sizeGiB:+$((sizeGiB << 30))}
+    partitionEnd="$((partitionStart + ${sizeGiB:-$szDisk} - 512))"
     [ "$partitionEnd" -gt "$freeSpaceEnd" ] && partitionEnd="$freeSpaceEnd"
     newptCmd="--align optimal mkpart ${ovl_dir}.. ${partitionStart}B ${partitionEnd}B"
 
@@ -1027,8 +1055,15 @@ prep_Partition() {
     # shellcheck disable=SC2086
     run_parted "${diskDevice}" \
         ${removePtNbr:+rm "$removePtNbr"} \
+        ${espCmd:+$espCmd} \
         ${newptCmd}
     : "${cfg:=ovl}"
+
+    [ "$espCmd" ] && {
+        udevadm trigger --name-match "$ESP" --action add --settle > /dev/kmsg 2>&1
+        mkfs_config fat ESP $((partitionStart - espStart))
+        create_Filesystem fat "$ESP"
+    }
 
     # Set new partition type with command - $@
     set_pt_type() {
@@ -1040,15 +1075,12 @@ prep_Partition() {
     # shellcheck disable=SC2086
     newptType="$p_ptType" set_pt_type $newptCmd
 
-    [ "$p_pt" ] || {
-        p_pt=$(aptPartitionName "$diskDevice" "$newptNbr")
+    p_Partition=$(aptPartitionName "$diskDevice" "$newPtNbr")
+    udevadm trigger --name-match "$p_Partition" --action add --settle > /dev/kmsg 2>&1
+    ln -sf "$p_Partition" /run/initramfs/p_pt
 
-        udevadm trigger --name-match "$p_pt" --action add --settle > /dev/kmsg 2>&1
-        ln -sf "$p_pt" /run/initramfs/p_pt
-
-        [ "${p_ptFlags+set}" ] || set_FS_options "${p_ptfsType:-ext4}" p_ptFlags
-        mkfs_config "${p_ptfsType:=ext4}" LiveOS_persist $((partitionEnd - partitionStart + 1)) "${extra_attrs}"
-        wipefs --lock -af${QUIET:+q} "$p_pt"
-        create_Filesystem "$p_ptfsType" "$p_pt"
-    }
+    [ "${p_ptFlags+set}" ] || set_FS_options "${p_ptfsType:-ext4}" p_ptFlags
+    mkfs_config "${p_ptfsType:=ext4}" LiveOS_persist $((partitionEnd - partitionStart + 1)) "${extra_attrs}"
+    wipefs --lock -af${QUIET:+q} "$p_Partition"
+    create_Filesystem "$p_ptfsType" "$p_Partition"
 }
