@@ -1399,7 +1399,7 @@ snapshot of the root filesystem or the OverlayFS mount will use an additional
 lower layer with the root filesystem.
 --
 
-**rd.live.image**{[=__esp[=<sizeMiB>__]|,{__<devspec>__|PROMPTDK}]::
+**rd.live.image**[=__esp[=<sizeMiB>__]::
 This parameter without an argument supports the legacy syntax of passing just
 the base root filesystem partition **root=**__<path to blockdevice>__ instead
 of **root=**live:__<path to blockdevice>__ to indicate a live boot.
@@ -1419,18 +1419,6 @@ omitted.
 +
 This feature facilitates updating the image kernel version and installing
 multiple boot images or alternative initrd images on the boot device.
-* *_<devspec>_* specifies the path to a device with a mountable filesystem and
-is used to designate the target disk when a new installation is desired on an
-arbitrary disk.
-*_<devspec>_* may be in the form of
-+
-{`serial=<devserial>/serial/<partspec>|UUID=?*|PARTUUID=?*|LABEL=?*|PARTLABEL=?*|/dev/?*`}
-+
-serial=_<devserial>_/serial/[_<partspec>_] specifies the ID_SERIAL_SHORT
-property value for the target disk device followed by `/serial/` and optional
-_<partspec>_, where _<partspec>_ is a numeric only partition number or one of
-the other _<devspec>_ specifications.
-* *PROMPTDK* triggers an interactive menu for selecting the target disk.
 
 Uncompressed live filesystem image::
 When the live system was installed with the '--skipcompress' option of the
