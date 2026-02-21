@@ -287,12 +287,14 @@ if [ -e "$SQUASHED" ]; then
 
     SQUASHED_LOOPDEV=$(losetup -f)
     losetup -r "$SQUASHED_LOOPDEV" "$SQUASHED"
-    mkdir -m 0755 -p /run/initramfs/squashfs
-    mount -n -o ro "$SQUASHED_LOOPDEV" /run/initramfs/squashfs
+    mount --mkdir=0755 -n -o ro "$SQUASHED_LOOPDEV" /run/initramfs/squashfs
 
     if [ -d /run/initramfs/squashfs/LiveOS ]; then
         if [ -f /run/initramfs/squashfs/LiveOS/rootfs.img ]; then
             FSIMG=/run/initramfs/squashfs/LiveOS/rootfs.img
+        else
+            Die "Failed to find an embedded root filesystem image in /run/initramfs/squashfs/LiveOS/."
+            exit 1
         fi
     elif [ -d /run/initramfs/squashfs/usr ] || [ -d /run/initramfs/squashfs/ostree ]; then
         FSIMG=$SQUASHED
@@ -307,14 +309,14 @@ if [ -e "$SQUASHED" ]; then
             Die 'OverlayFS is required but unavailable.'
             exit 1
         fi
-    else
-        Die "Failed to find a root filesystem in $SQUASHED."
-        exit 1
     fi
 else
     # we might have an embedded fs image to use as rootfs (uncompressed live)
     if [ -e /run/initramfs/live/"$srcdir"/rootfs.img ]; then
         FSIMG=/run/initramfs/live/"$srcdir"/rootfs.img
+    else
+        Die "Failed to find a root filesystem in /run/initramfs/live/$srcdir/."
+        exit 1
     fi
     [ "$live_ram" ] && src="$FSIMG" dst=/run/initramfs/rootfs.img var=FSIMG dd_copy
 fi
