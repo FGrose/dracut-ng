@@ -100,6 +100,14 @@ rd_overlay=$(get_rd_overlay) && {
 
 [ "$partitionTable" ] || get_partitionTable "$diskDevice"
 
+IFS=: parse_pt_row "$(pt_row 2)"
+# Check partitionTable for dd'd .iso ESP.
+[ "$ptLabel" = Appended2 ] && {
+    espNbr=2
+    ESP=$(aptPartitionName "$diskDevice" 2)
+    ln -sf "$ESP" /run/initramfs/espdev
+}
+
 case "$livedev_fstype" in
     iso9660 | udf)
         rd_live_check "${diskDevice:-$livedev}"
