@@ -6,7 +6,14 @@ check() {
 }
 
 depends() {
-    echo base initqueue
+    # Determine distribution in order to select
+    #   the appropriate <distribution>-lib dependency.
+    [[ -e "${dracutsysrootdir-}/etc/os-release" ]] && {
+        # shellcheck disable=SC1090
+        . "${dracutsysrootdir-}/etc/os-release"
+        dist="$ID"
+    }
+    echo base fs-lib initqueue "${dist:-distribution}-lib" distribution-lib
 }
 
 installkernel() {
