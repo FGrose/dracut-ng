@@ -302,7 +302,6 @@ if [ -e "$FSIMG" ]; then
         fi
     }
 fi
-
 if [ "$FSIMG" ]; then
     if [ "$writable_fsimg" ]; then
         # mount the provided filesystem read/write
