@@ -120,7 +120,7 @@ case "$cfg" in
         ;;
 esac
 
-# mount the backing of the live image
+# mount the backing of the live imageFS
 case "$livedev_fstype" in
     auto)
         Die "cannot mount live image (unknown filesystem type $livedev_fstype)"

@@ -1,6 +1,6 @@
 #!/bin/sh
 
-command -v getargbool > /dev/null || . /lib/dracut-lib.sh
+command -v getargbool > /dev/null || . /lib/dracut-lib-min.sh
 
 generator_set_device_timeout() {
     local _name

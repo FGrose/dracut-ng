@@ -90,6 +90,7 @@ install() {
 
     mkdir -p "${initdir}"/tmp
 
+    inst_simple "$moddir/dracut-lib-min.sh" "/lib/dracut-lib-min.sh"
     inst_simple "$moddir/dracut-lib.sh" "/lib/dracut-lib.sh"
     inst_simple "$moddir/dracut-dev-lib.sh" "/lib/dracut-dev-lib.sh"
     mkdir -p "${initdir}"/var
@@ -149,6 +150,7 @@ install() {
                 export hookdir=/var/lib/dracut/hooks
 
                 # shellcheck source=dracut-dev-lib.sh
+                . "$moddir"/dracut-lib-min.sh
                 . "$moddir/dracut-dev-lib.sh"
 
                 for _dev in "${host_devs[@]}"; do

@@ -1,8 +1,8 @@
 #!/bin/sh
 # overlayfs-lib.sh: utilities for OverlayFS use
 
-command -v getarg > /dev/null || . /lib/dracut-lib.sh
-command -v parse_cfgArgs > /dev/null || . /lib/partition-lib.sh
+command -v getarg > /dev/null || . /lib/dracut-lib-min.sh
+command -v parse_cfgArgs > /dev/null || . /lib/partition-lib-min.sh
 
 # Fetch non-boolean values for rd.overlay or fall back to rd.live.overlay
 # $1 - $OverlayFS - OverlayFS mount source name default.
@@ -116,6 +116,16 @@ JobTimeoutSec=3000
 JobRunningTimeoutSec=3000" > "$GENERATOR_DIR/$_OverlayFS".device.d/timeout.conf
 }
 
+# Find final mount point for the partition.
+get_mountpoint() {
+    local - src mnt last_mnt
+    set +x
+    while read -r src mnt _ _; do
+        [ "$src" = "$p_pt" ] && last_mnt="$mnt"
+    done < /proc/mounts
+    echo "$last_mnt"
+}
+
 mount_partition() {
     mkdir -p "$mountPoint"
     if [ "${DRACUT_SYSTEMD-}" ]; then
@@ -136,16 +146,6 @@ get_ovlpath() {
         : "${ovlpath:=/"$ovl_dir"/overlay-"$label"-"$uuid"}"
         str_starts "$ovlpath" '/' || ovlpath=/"$ovlpath"
     }
-}
-
-# Find final mount point for the partition.
-get_mountpoint() {
-    local - src mnt last_mnt
-    set +x
-    while read -r src mnt _ _; do
-        [ "$src" = "$p_pt" ] && last_mnt="$mnt"
-    done < /proc/mounts
-    echo "$last_mnt"
 }
 
 # $1 - mntDir
