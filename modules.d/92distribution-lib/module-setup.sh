@@ -24,10 +24,10 @@ install() {
 #!/bin/sh
 # distribution-lib.sh: utilities for <distribution> image configuration
 
-# Additional filesystem flags
-# $1 - fsType (ignored) $2 - flagvariable
-set_FS_opts() {
-    command -v set_FS_optionss > /dev/null || . /lib/fs-lib.sh
+# Stub wrapper for additional filesystem flags
+# $1 - fsType (ignored) $2 - flag_variable
+set_FS_opts_w() {
+    command -v set_FS_optionss > /dev/null || . /lib/partition-lib-min.sh
     # Call function in fs-lib.sh
     set_FS_options "$2" ''
 }

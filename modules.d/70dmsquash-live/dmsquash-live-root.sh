@@ -125,7 +125,7 @@ case "$cfg" in
         ;;
 esac
 
-# mount the backing of the live image
+# mount the backing of the live imageFS
 mkdir -m 0755 -p /run/initramfs/live
 case "$livedev_fstype" in
     auto)
@@ -215,7 +215,7 @@ esac
 # overlay setup helper function
 do_live_overlay() {
     local src mnt
-    get_ovlpath
+    [ -b /run/initramfs/p_pt ] && sget_ovlpath
     # need to know where to look for the overlay
     if [ ! "$setup" ] && [ "$p_pt" ]; then
         mkdir -m 0755 -p "${mntDir:=/run/LiveOS_persist}"
