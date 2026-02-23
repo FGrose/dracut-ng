@@ -114,7 +114,7 @@ case "$cfg" in
         ;;
 esac
 
-# mount the backing of the live image
+# mount the backing of the live imageFS
 mkdir -m 0755 -p /run/initramfs/live
 case "$livedev_fstype" in
     auto)

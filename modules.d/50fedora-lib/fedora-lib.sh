@@ -8,7 +8,7 @@
 # $1 - fsType
 # $2 - flag_variable (p_ptFlags or rflags)
 set_FS_opts_w() {
-    command -v set_FS_options > /dev/null || . /lib/fs-lib.sh
+    command -v set_FS_options > /dev/null || . /lib/partition-lib-min.sh
     local rd_flags
     case "$2" in
         p_ptFlags)
@@ -31,7 +31,7 @@ set_FS_opts_w() {
             fsckoptions='-E discard'
             ;;
     esac
-    # Execute setting through function in fs-lib.sh
+    # Execute setting through function in partition-lib-min.sh
     set_FS_options "$2" "$rd_flags"
 }
 

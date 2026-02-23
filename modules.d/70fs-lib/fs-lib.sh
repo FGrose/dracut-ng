@@ -315,25 +315,3 @@ create_Filesystem() {
     # Update udev_db for fs info changes.
     udevadm trigger --name-match "$dev" --action change --settle > /dev/kmsg 2>&1
 }
-
-# Additional mount flags appended to any from the command line.
-# $1 - flag_variable (p_ptFlags or rflags)
-# $2 - flagstring from set_FS_opts_w() in <distribution>-lib.sh
-set_FS_options() {
-    local rd_flags rd_arg
-    if ! [ "$2" ]; then
-        case "$1" in
-            p_ptFlags) rd_flags=$(getarg rd.ovl.flags) ;;
-            rflags) rd_flags=$(getarg rootflags=) ;;
-        esac
-    else
-        case "$1" in
-            p_ptFlags) rd_arg=rd.ovl.flags ;;
-            rflags) rd_arg=rootflags ;;
-        esac
-        # Record additional mount flags for other users.
-        mkdir -p /etc/kernel
-        printf '%s' " $rd_arg=$2" >> /etc/kernel/cmdline
-    fi
-    eval "$1=${2:-$rd_flags}"
-}

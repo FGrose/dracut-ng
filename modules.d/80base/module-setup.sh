@@ -91,6 +91,7 @@ install() {
 
     mkdir -p "${initdir}"/tmp
 
+    inst_simple "$moddir/dracut-lib-min.sh" "/lib/dracut-lib-min.sh"
     inst_simple "$moddir/dracut-lib.sh" "/lib/dracut-lib.sh"
     inst_simple "$moddir/dracut-dev-lib.sh" "/lib/dracut-dev-lib.sh"
     mkdir -p "${initdir}"/var

@@ -127,38 +127,6 @@ label_uuid_udevadm_trigger() {
     udevadm trigger --subsystem-match=block --action="${2:-add}" ${_property:+--property-match=$_property} --settle
 }
 
-
-# get a systemd-compatible unit name from a path
-# (mimics unit_name_from_path_instance())
-dev_unit_name() {
-    local dev="$1"
-
-    if command -v systemd-escape > /dev/null; then
-        case $dev in
-            */*) systemd-escape -p -- "$dev" ;;
-            *) systemd-escape -- "$dev" ;;
-        esac
-        return $?
-    fi
-
-    if [ "$dev" = "/" ] || [ -z "$dev" ]; then
-        printf -- "-"
-        return 0
-    fi
-
-    dev="${1%%/}"
-    dev="${dev##/}"
-    # shellcheck disable=SC1003
-    dev="$(str_replace "$dev" '\' '\x5c')"
-    dev="$(str_replace "$dev" '-' '\x2d')"
-    if [ "${dev##.}" != "$dev" ]; then
-        dev="\x2e${dev##.}"
-    fi
-    dev="$(str_replace "$dev" '/' '-')"
-
-    printf -- "%s" "$dev"
-}
-
 # set_systemd_timeout_for_dev [-n] <dev> [<timeout>]
 # Set 'rd.timeout' as the systemd timeout for <dev>
 set_systemd_timeout_for_dev() {
