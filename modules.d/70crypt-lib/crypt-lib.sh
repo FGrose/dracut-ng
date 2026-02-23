@@ -1,6 +1,6 @@
 #!/bin/sh
 
-command -v getarg > /dev/null || . /lib/dracut-lib.sh
+command -v devnames > /dev/null || . /lib/dracut-lib.sh
 
 # check if the crypttab contains an entry for a LUKS UUID
 crypttab_contains() {

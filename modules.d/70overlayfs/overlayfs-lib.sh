@@ -1,8 +1,9 @@
 #!/bin/sh
 # overlayfs-lib.sh: utilities for OverlayFS use
 
-command -v getarg > /dev/null || . /lib/dracut-lib.sh
-command -v parse_cfgArgs > /dev/null || . /lib/partition-lib.sh
+command -v getarg > /dev/null || . /lib/dracut-lib-min.sh
+command -v parse_cfgArgs > /dev/null || . /lib/partition-lib-min.sh
+command -v set_FS_options > /dev/null || . /lib/distribution-lib-min.sh
 
 # Fetch non-boolean values for rd.overlay or fall back to rd.live.overlay
 # $1 - $OverlayFS - OverlayFS mount source name default.

@@ -2,8 +2,8 @@
 
 [ "$RD_DEBUG" = yes ] && set -x
 PS4='+ $(read -r u _ </proc/uptime; echo "$u") ${BASH_SOURCE-$0}@$LINENO${FUNCNAME:+ $FUNCNAME()}: '
-command -v getarg > /dev/null || . /lib/dracut-lib.sh
-command -v do_overlayfs > /dev/null || . /lib/overlayfs-lib.sh
+command -v get_rd_overlay > /dev/null || . /lib/overlayfs-lib.sh
+command -v load_fstype > /dev/null || . /lib/dracut-lib-min.sh
 
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
@@ -12,7 +12,7 @@ PATH=/usr/sbin:/usr/bin:/sbin:/bin
 get_rd_overlay os_rootfs
 [ -h /run/initramfs/p_pt ] || exit 0
 
-load_fstype overlay || die 'OverlayFS is required but unavailable.'
+load_fstype overlay || Die 'OverlayFS is required but unavailable.'
 
 root_pt="$1"
 

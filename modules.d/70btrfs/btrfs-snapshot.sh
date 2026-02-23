@@ -59,7 +59,7 @@ case "$(btrfs property get -ts "$subvol")" in
         p_pt=$(readlink -f /run/initramfs/p_pt)
         if [ -b "$p_pt" ]; then
             command -v det_fs > /dev/null || . /lib/fs-lib.sh
-            command -v set_FS_options > /dev/null || . /lib/partition-lib.sh
+            command -v set_FS_options > /dev/null || . /lib/distribution-lib-min.sh
             [ "${p_ptFlags+set}" ] || set_FS_options "$(det_fs "$p_pt")" p_ptFlags
             fstype="$p_ptfsType" srcPartition="$p_pt" mountPoint=/run/os_persist \
                 srcflags="$p_ptFlags" mount_partition

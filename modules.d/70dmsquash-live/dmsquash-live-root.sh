@@ -162,7 +162,7 @@ case $cfg in
         ;;
 esac
 
-# mount the backing of the live image
+# mount the backing of the live image<<<<<<< HEAD
 case $livedev_fstype in
     iso9660)
         [ -f "$livedev" ] && {

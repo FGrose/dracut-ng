@@ -1,6 +1,6 @@
 #!/bin/sh
 
-command -v getarg > /dev/null || . /lib/dracut-lib.sh
+command -v warn > /dev/null || . /lib/dracut-lib.sh
 
 fsck_ask_reboot() {
     info "note - fsck suggests reboot, if you"

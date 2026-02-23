@@ -33,6 +33,16 @@ update_BootConfig() {
     return 1
 }
 E
+        cat > "${initdir}/lib/distribution-lib-min.sh" << "E"
+#!/bin/sh
+# distribution-lib-min.sh: mininimal utilities for <distribution> image configuration
+
+# Stub function used if a distribution-specific version is not available.
+set_FS_options() {
+    local fsType="$1"
+    info "No additional options for '$fsType'."
+}
+E
         dwarn "*** A module for updating the boot configuration is missing. ***"
         dwarn "*** It would be needed for changes to the boot menu entries. ***"
         dwarn "*** Expecting $dracutbasedir/modules.d/[0-9][0-9]${dist}-lib ***"

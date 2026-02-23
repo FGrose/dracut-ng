@@ -1,24 +1,5 @@
 #!/bin/sh
-
-# replaces all occurrences of 'search' in 'str' with 'replacement'
-#
-# str_replace str search replacement
-#
-# example:
-# str_replace '  one two  three  ' ' ' '_'
-str_replace() {
-    local in="$1"
-    local s="$2"
-    local r="$3"
-    local out=''
-
-    while [ "${in##*"$s"*}" != "$in" ]; do
-        chop="${in%%"$s"*}"
-        out="${out}${chop}$r"
-        in="${in#*"$s"}"
-    done
-    printf -- '%s' "${out}${in}"
-}
+command -v dev_unit_name > /dev/null || . /lib/dracut-lib-min.sh
 
 # Return an appropriate name for device $1 partition [$2]. Device names
 # that end with a digit must have a 'p' prepended to the partition number.
@@ -144,65 +125,45 @@ label_uuid_udevadm_trigger() {
     udevadm trigger --subsystem-match=block --action="$_act" ${_prop:+--property-match="$_prop"} --settle
 }
 
+# set_systemd_timeout_for_dev [-n] <dev> [<timeout>]
+# Set 'rd.timeout' as the systemd timeout for <dev>
+set_systemd_timeout_for_dev() {
+    local _name
+    local _needreload
+    local _noreload
+    local _timeout
 
-# get a systemd-compatible unit name from a path
-# (mimics unit_name_from_path_instance())
-dev_unit_name() {
-    local - dev="$1" out='' chop
-    set +x
+    [ -z "${DRACUT_SYSTEMD-}" ] && return 0
 
-    if command -v systemd-escape > /dev/null; then
-        case $dev in
-            */*) systemd-escape -p -- "$dev" ;;
-            *) systemd-escape -- "$dev" ;;
-        esac
-        return $?
+    if [ "$1" = "-n" ]; then
+        _noreload=1
+        shift
     fi
 
-    case $dev in
-        '' | /)
-            printf -- '-'
-            return 0
-            ;;
-    esac
+    if [ -n "$2" ]; then
+        _timeout="$2"
+    else
+        _timeout=$(getarg rd.timeout)
+    fi
 
-    while [ "${dev%/}" != "$dev" ]; do dev="${dev%/}"; done
-    while [ "${dev#/}" != "$dev" ]; do dev="${dev#/}"; done
-    while :; do case $dev in *//*) dev="${dev%%//*}/${dev#*//}" ;; *) break ;; esac done
-    dun=''
-    [ "${dev#\.}" != "$dev" ] && dun='\x2e'
-    dev="${dev#\.}"
-    while :; do
-        case $dev in
-            *[\\/\ -]*)
-                chop="${dev%%[\\/ -]*}"
-                out="${out}${chop}"
-                case $dev in
-                    "$chop"\\*)
-                        out="${out}\\x5c"
-                        dev="${dev#"$chop"\\}"
-                        ;;
-                    "$chop"/*)
-                        out="${out}-"
-                        dev="${dev#"$chop"/}"
-                        ;;
-                    "$chop"\ *)
-                        out="${out}\\x20"
-                        dev="${dev#"$chop" }"
-                        ;;
-                    "$chop"-*)
-                        out="${out}\\x2d"
-                        dev="${dev#"$chop"-}"
-                        ;;
-                esac
-                ;;
-            *)
-                dun="${dun}${out}${dev}"
-                break
-                ;;
-        esac
-    done
-    printf -- '%s' "$dun"
+    _timeout=${_timeout:-infinity}
+
+    _name=$(dev_unit_name "$1")
+
+    if ! [ -f "${PREFIX-}/etc/systemd/system/${_name}.device.d/timeout.conf" ]; then
+        mkdir -p "${PREFIX-}/etc/systemd/system/${_name}.device.d"
+        {
+            echo "[Unit]"
+            echo "JobTimeoutSec=$_timeout"
+            echo "JobRunningTimeoutSec=$_timeout"
+        } > "${PREFIX-}/etc/systemd/system/${_name}.device.d/timeout.conf"
+        type mark_hostonly > /dev/null 2>&1 && mark_hostonly /etc/systemd/system/"${_name}".device.d/timeout.conf
+        _needreload=1
+    fi
+
+    if [ -z "${PREFIX-}" ] && [ "$_needreload" = 1 ] && [ -z "$_noreload" ]; then
+        /sbin/initqueue --onetime --unique --name daemon-reload systemctl daemon-reload
+    fi
 }
 
 # wait_for_dev <dev> [<timeout>]

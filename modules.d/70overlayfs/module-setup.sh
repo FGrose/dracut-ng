@@ -13,8 +13,7 @@ depends() {
         . "${dracutsysrootdir-}/etc/os-release"
         dist="$ID"
     }
-    echo base fs-lib initqueue "${dist:-distribution}-lib" distribution-lib
-    echo base "${dist:-distribution}-lib" distribution-lib fs-lib initqueue partition-lib
+    echo base "${dist:-distribution}-lib" distribution-lib fs-lib img-lib initqueue partition-lib
 }
 
 installkernel() {
