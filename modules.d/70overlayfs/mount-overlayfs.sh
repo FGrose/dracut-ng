@@ -5,7 +5,7 @@
 # The script will be called again at pre-pivot when the root is mounted.
 [ -e /run/rootfsbase ] || [ -h /run/initramfs/p_pt ] || return 0
 
-command -v getarg > /dev/null || . /lib/dracut-lib.sh
+command -v ismounted > /dev/null || . /lib/dracut-lib.sh
 
 read -r OverlayFS < /run/initramfs/OverlayFS
 

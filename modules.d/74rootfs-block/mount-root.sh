@@ -1,6 +1,6 @@
 #!/bin/sh
 
-command -v getarg > /dev/null || . /lib/dracut-lib.sh
+command -v ismounted > /dev/null || . /lib/dracut-lib.sh
 command -v det_fs > /dev/null || . /lib/fs-lib.sh
 
 # Call with preset arguments like:

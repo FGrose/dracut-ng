@@ -1,24 +1,5 @@
 #!/bin/sh
-
-# replaces all occurrences of 'search' in 'str' with 'replacement'
-#
-# str_replace str search replacement
-#
-# example:
-# str_replace '  one two  three  ' ' ' '_'
-str_replace() {
-    local in="$1"
-    local s="$2"
-    local r="$3"
-    local out=''
-
-    while [ "${in##*"$s"*}" != "$in" ]; do
-        chop="${in%%"$s"*}"
-        out="${out}${chop}$r"
-        in="${in#*"$s"}"
-    done
-    printf -- '%s' "${out}${in}"
-}
+command -v dev_unit_name > /dev/null || . /lib/dracut-lib-min.sh
 
 # Return an appropriate name for device $1 partition [$2]. Device names
 # that end with a digit must have a 'p' prepended to the partition number.
@@ -142,38 +123,6 @@ label_uuid_udevadm_trigger() {
             ;;
     esac
     udevadm trigger --subsystem-match=block --action="$_act" ${_prop:+--property-match="$_prop"} --settle
-}
-
-
-# get a systemd-compatible unit name from a path
-# (mimics unit_name_from_path_instance())
-dev_unit_name() {
-    local dev="$1"
-
-    if command -v systemd-escape > /dev/null; then
-        case $dev in
-            */*) systemd-escape -p -- "$dev" ;;
-            *) systemd-escape -- "$dev" ;;
-        esac
-        return $?
-    fi
-
-    if [ "$dev" = "/" ] || [ -z "$dev" ]; then
-        printf -- "-"
-        return 0
-    fi
-
-    dev="${1%%/}"
-    dev="${dev##/}"
-    # shellcheck disable=SC1003
-    dev="$(str_replace "$dev" '\' '\x5c')"
-    dev="$(str_replace "$dev" '-' '\x2d')"
-    if [ "${dev##.}" != "$dev" ]; then
-        dev="\x2e${dev##.}"
-    fi
-    dev="$(str_replace "$dev" '/' '-')"
-
-    printf -- "%s" "$dev"
 }
 
 # set_systemd_timeout_for_dev [-n] <dev> [<timeout>]

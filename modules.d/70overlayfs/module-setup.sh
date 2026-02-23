@@ -13,7 +13,7 @@ depends() {
     dist=${dist#\"}
     dist=${dist%\"}
 
-    echo base "${dist:-distribution}"-lib distribution-lib fs-lib initqueue partition-lib
+    echo base "${dist:-distribution}"-lib distribution-lib fs-lib img-lib initqueue partition-lib
 }
 
 installkernel() {

@@ -1,6 +1,6 @@
 #!/bin/sh
 
-command -v getarg > /dev/null || . /lib/dracut-lib.sh
+command -v getarg > /dev/null || . /lib/dracut-lib-min.sh
 
 generator_wait_for_dev() {
     local _name
