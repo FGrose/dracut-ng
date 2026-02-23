@@ -1,7 +1,7 @@
 #!/bin/sh
 # overlayfs-generator
 
-command -v getarg > /dev/null || . /lib/dracut-lib.sh
+command -v getarg > /dev/null || . /lib/dracut-lib-min.sh
 command -v parse_cfgArgs > /dev/null || . /lib/overlayfs-lib.sh
 
 btrfs_snap="$(getarg rd.btrfs.snapshot)" && {

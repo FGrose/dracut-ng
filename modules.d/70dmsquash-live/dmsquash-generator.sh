@@ -1,7 +1,7 @@
 #!/bin/sh
 # dmsquash-generator
 
-command -v getarg > /dev/null || . /lib/dracut-lib.sh
+command -v getarg > /dev/null || . /lib/dracut-lib-min.sh
 command -v get_rd_overlay > /dev/null || . /lib/overlayfs-lib.sh
 
 generator=generator
