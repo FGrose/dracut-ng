@@ -103,10 +103,10 @@ check_live_ram() {
     imgsize=$1
     memsize=$(($(check_meminfo MemTotal:) >> 10))
     # shellcheck disable=SC2046
-    set -- $(findmnt -bnro SIZE,AVAIL /run)
-    # bytes to MiB
-    runsize=$(($1 >> 20))
-    runavail=$(($2 >> 20))
+    set -- $(stat -f -c '%b %a %S' /run)
+    # to MiB
+    runsize=$(($1 * $3 >> 20))
+    runavail=$(($2 * $3 >> 20))
 
     [ "$imgsize" ] || {
         warn "Image size could not be determined"
