@@ -5,6 +5,37 @@ run_parted() {
     LC_ALL=C flock "$1" parted --script "$@"
 }
 
+# Determine some attributes for the device - $1
+get_diskDevice() {
+    local - dev n syspath p_path
+    set -x
+    dev="${1##*/}"
+    syspath=/sys/class/block/"$dev"
+    n=0
+    until [ -d "$syspath" ] || [ "$n" -gt 9 ]; do
+        sleep 0.4
+        n=$((n + 1))
+    done
+    [ -d "$syspath" ] || return 1
+    if [ -f "$syspath"/partition ]; then
+        p_path=$(readlink -f "$syspath"/..)
+        diskDevice=/dev/"${p_path##*/}"
+    else
+        while read -r line; do
+            case "$line" in
+                DEVTYPE=disk) diskDevice=/dev/"$dev" ;;
+                DEVTYPE=loop) return 0 ;;
+            esac
+        done < "$syspath"/uevent
+    fi
+    { read -r optimalIO < "$syspath"/queue/optimal_io_size; } > /dev/null 2>&1
+    : "${optimalIO:=0}"
+    fsType=$(blkid /dev/"$dev")
+    fsType="${fsType#* TYPE=\"}"
+    fsType="${fsType%%\"*}"
+    echo "$diskDevice" > /run/initramfs/diskdev
+}
+
 # Set partitionTable, szDisk variables for diskDevice=$1
 # partitionTable holds values for the latest call to this function.
 get_partitionTable() {
