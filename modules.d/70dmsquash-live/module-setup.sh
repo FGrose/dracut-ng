@@ -22,7 +22,7 @@ installkernel() {
 
 # called by dracut
 install() {
-    inst_multiple umount dmsetup blkid dd losetup find rmdir stat
+    inst_multiple umount dmsetup blkid dd losetup find rmdir stat kexec
     inst_multiple -o checkisomd5
     inst_hook cmdline 30 "$moddir/parse-dmsquash-live.sh"
     inst_hook cmdline 31 "$moddir/parse-iso-scan.sh"
@@ -32,8 +32,7 @@ install() {
     inst_script "$moddir/dmsquash-live-root.sh" "/sbin/dmsquash-live-root"
     inst_script "$moddir/iso-scan.sh" "/sbin/iso-scan"
     inst_script "$moddir/../74rootfs-block/mount-root.sh" "/sbin/mount-root"
-    if dracut_module_included "systemd"; then
-        inst_script "$moddir/dmsquash-generator.sh" "$systemdutildir"/system-generators/dracut-dmsquash-generator
-        inst_simple "$moddir/checkisomd5@.service" "/etc/systemd/system/checkisomd5@.service"
-    fi
+    # Unconditionally include these in case they are needed for booting an alternate .iso image.
+    inst_script "$moddir/dmsquash-generator.sh" "$systemdutildir"/system-generators/dracut-dmsquash-generator
+    inst_simple "$moddir/checkisomd5@.service" "/etc/systemd/system/checkisomd5@.service"
 }
