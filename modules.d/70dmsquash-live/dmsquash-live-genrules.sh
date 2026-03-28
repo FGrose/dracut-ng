@@ -1,6 +1,9 @@
 #!/bin/sh
 
 case "$root" in
+    live:iso-scan)
+        info info "initqueue/settled is set in iso-scan.sh"
+        ;;
     live:/dev/*)
         {
             printf 'KERNEL=="%s", ENV{DEVTYPE}=="partition", RUN+="/sbin/initqueue --settled --onetime --unique /sbin/dmsquash-live-root $$(readlink -f %s)"\n' \

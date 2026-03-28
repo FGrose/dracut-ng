@@ -1,38 +1,205 @@
 #!/bin/sh
 
+[ "$RD_DEBUG" = yes ] && set -x
+PS4='+ $(read -r u _ </proc/uptime; echo "$u") ${BASH_SOURCE-$0}@$LINENO${FUNCNAME:+ $FUNCNAME()}: '
 command -v getarg > /dev/null || . /lib/dracut-lib.sh
+command -v mount_partition > /dev/null || . /lib/partition-lib.sh
+command -v get_rd_overlay > /dev/null || . /lib/overlayfs-lib.sh
 
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
-isofile=$1
+isopath="$1"
 
-[ -z "$isofile" ] && exit 1
+[ "$isopath" ] || Die "An path to the .iso was not provided."
 
 ismounted "/run/initramfs/isoscan" && exit 0
 
-mkdir -p "/run/initramfs/isoscan"
+isofile="${isopath##*:}"
 
-do_iso_scan() {
-    local _name
-    local dev
-    for dev in /dev/disk/by-uuid/*; do
-        _name=$(dev_unit_name "$dev")
-        [ -e /tmp/isoscan-"${_name}" ] && continue
-        : > /tmp/isoscan-"${_name}"
-        mount -t auto -o ro "$dev" "/run/initramfs/isoscan" || continue
-        if [ -f "/run/initramfs/isoscan/$isofile" ]; then
-            losetup -f "/run/initramfs/isoscan/$isofile"
-            udevadm trigger --action=add > /dev/null 2>&1
-            ln -s "$dev" /run/initramfs/isoscandev
-            rm -f -- "$job"
-            exit 0
-        else
-            umount "/run/initramfs/isoscan"
-        fi
-    done
+get_rd_overlay LiveOS_rootfs
+
+# $1 - pt_dev
+get_ptInfo() {
+    ptInfo=$(blkid "$1")
+    LABEL="${ptInfo#* LABEL=\"}"
+    LABEL="${LABEL%%\"*}"
+    UUID="${ptInfo#* UUID=\"}"
+    UUID="${UUID%%\"*}"
 }
 
-do_iso_scan
+setup_isoloop() {
+    if [ "$p_pt" -ef "$devspec" ]; then
+        # Overlay and .iso source are on the same partition.
+        command -v det_fs > /dev/null 2>&1 || . /lib/fs-lib.sh
+        [ "${p_ptFlags+set}" ] || set_FS_options "${p_ptfsType:=$(det_fs "$p_pt")}" p_ptFlags
+        if [ "${DRACUT_SYSTEMD-}" ]; then
+            # Repurpose rootfs-block/mount-root.sh for the persistence partition.
+            mntcmd=/sbin/mount-root
+        else
+            # Repurpose 99-mount-root.sh for the overlay's & source partition.
+            mntcmd="$hookdir"/mount/99-mount-root.sh
+        fi
+        fstype="${p_ptfsType:-auto}" srcPartition="$p_pt" \
+            mountPoint=/run/initramfs/isoscan srcflags="$p_ptFlags" \
+            override=override . "$mntcmd"
+    else
+        udevadm trigger --name-match="$devspec" --action=add --settle > /dev/null 2>&1
+        loopdev=$(losetup -f)
+        losetup -r "$loopdev" "$devspec"
+        mount -m -t auto -o ro "$loopdev" /run/initramfs/isoscan 2> /dev/kmsg || {
+            losetup -d "$loopdev"
+            return 1
+        }
+    fi
+    echo "$devspec" > /run/initramfs/isoscandev
+    case "$isofile" in
+        PROMPTDR=*)
+            dir=${isofile#PROMPTDR=}
+            message="\`
+\`            .iso image files from: $pt_dev ($LABEL) $dir
+\`
+\`           Select the file to be booted.
+\`
+"
+            echo 'Press <Escape> to toggle menu, then Enter the # for your target here: ' > /tmp/prompt
+            dir="${dir#/}"
+            set +x
+            prompt_for_path "$message" /run/initramfs/isoscan/"${dir%/}" /run/initramfs/isoscan/"${dir%/}"/*.iso
+            [ "$RD_DEBUG" = yes ] && set -x
+            isofile="${objSelected#* \'}"
+            isofile="${dir%/}/${isofile%\'}"
+            # Remove link to diskDevice if set by prompt_for_device().
+            rm /run/initramfs/diskdev > /dev/null 2>&1
+            ;;
+    esac
+    _isofile=/run/initramfs/isoscan/"${isofile#/}"
+    [ -f "$_isofile" ] || {
+        umount /run/initramfs/isoscan
+        losetup -d "$loopdev"
+        return 1
+    }
+    loopdev=$(losetup -f)
+    losetup -r "$loopdev" "$_isofile"
+    udevadm trigger --name-match="$loopdev" --action=change --settle > /dev/null 2>&1
+    echo "$_isofile" > /run/initramfs/isofile
+    rm -f -- "$job"
+    [ "${root%%:*}" = live ] && /sbin/initqueue --settled --onetime --unique /sbin/dmsquash-live-root "$loopdev"
+    . /usr/lib/initrd-release
+    [ "${DRACUT_VERSION:-112}" -ge 112 ] && exit 0
 
-rmdir "/run/initramfs/isoscan"
+    get_ptInfo "$devspec"
+    mount -m -n -t iso9660 -o ro "$loopdev" /run/initramfs/live
+    for bp in boot/x86_64/loader images/pxeboot isolinux; do
+        [ -d /run/initramfs/live/"$bp" ] && break
+    done
+    case "${bp##*/}" in
+        loader)
+            vm=linux
+            rd=initrd
+            ;;
+        pxeboot)
+            vm=vmlinuz
+            rd=initrd.img
+            ;;
+        isolinux)
+            vm=vmlinuz0
+            rd=initrd0.img
+            ;;
+    esac
+    read -r cmdline < /proc/cmdline
+    cmdline="${cmdline#BOOT_IMAGE=* }"
+    [ "a${cmdline##*rd\.live\.image*}" != "a$cmdline" ] || cmdline="$cmdline rd.live.image"
+    c1="${cmdline%iso-scan/filename=*}"
+    c2="${cmdline#"${c1}"iso-scan/filename=}"
+    c2="${c2#* }"
+    cmdline="${c1}iso-scan/filename=UUID=${UUID}:${isofile} ${c2}"
+    echo "/usr/sbin/dmsquash-live-root
+/usr/sbin/iso-scan
+/usr/bin/overlayfs-root_t.sh
+/usr/bin/mount-root
+/usr/bin/parted
+/usr/lib/dracut-lib.sh
+/usr/lib/dracut-lib-min.sh
+/usr/lib/dracut-dev-lib.sh
+/usr/lib/fs-lib.sh
+/usr/lib/img-lib.sh
+/usr/lib/partition-lib.sh
+/usr/lib/partition-lib-min.sh
+/usr/lib/overlayfs-lib.sh
+/usr/lib/systemd/system-generators/dracut-dmsquash-generator
+/usr/lib/systemd/system/overlayfs-root_t.service
+/usr/lib64/libdevmapper.so.1.02
+/usr/lib64/libparted.so.2
+/usr/lib64/libparted.so.2.0.5
+/var/
+/var/lib/
+/var/lib/dracut/
+/var/lib/dracut/hooks/
+/var/lib/dracut/hooks/cmdline/
+/var/lib/dracut/hooks/cmdline/31-parse-iso-scan.sh
+/var/lib/dracut/hooks/emergency/
+/var/lib/dracut/hooks/initqueue/
+/var/lib/dracut/hooks/initqueue/finished/
+/var/lib/dracut/hooks/initqueue/online/
+/var/lib/dracut/hooks/initqueue/settled/
+/var/lib/dracut/hooks/initqueue/timeout/
+/var/lib/dracut/hooks/mount/
+/var/lib/dracut/hooks/netroot/
+/var/lib/dracut/hooks/pre-mount/
+/var/lib/dracut/hooks/pre-mount/01-prepare-overlayfs.sh
+/var/lib/dracut/hooks/pre-pivot/
+/var/lib/dracut/hooks/pre-pivot/51-overlayfs-pre-pivot-actions.sh
+/var/lib/dracut/hooks/pre-pivot/52-dmsquash-live-pre-pivot-actions.sh
+/var/lib/dracut/hooks/pre-shutdown/
+/var/lib/dracut/hooks/pre-trigger/
+/var/lib/dracut/hooks/pre-udev/
+/var/lib/dracut/hooks/shutdown/
+/var/lib/dracut/hooks/shutdown-emergency/
+/lib/distribution-lib.sh" | cpio -o -H newc > /tmp/iso-scan.cpio
+    cat /run/initramfs/live/"$bp/$rd" /tmp/iso-scan.cpio > /tmp/final.img
+    kexec -d -s \
+        --load /run/initramfs/live/"$bp/$vm" \
+        --initrd /tmp/final.img \
+        --command-line "$cmdline"
+    umount /run/initramfs/live
+    losetup -d "$loopdev"
+    mount -o remount,rw /run/initramfs/isoscan
+    cp /run/initramfs/init.log /run/initramfs/isoscan/init.log
+    umount /run/initramfs/isoscan
+    kexec --exec
+}
+
+[ "a${isopath##*:*}" != "a$isopath" ] && {
+    devspec="${isopath%%:*}"
+    if [ "$devspec" = PROMPTPT ]; then
+        sleep 0.5
+        udevadm trigger --subsystem-match block --settle
+        # Assign devspec.
+        message='
+`
+`               Select the partition that holds your .iso files.
+`'
+        prompt_for_device PT "$message" warn0
+        ptInfo=$(blkid "$pt_dev")
+        LABEL="${ptInfo#* LABEL=\"}"
+        LABEL="${LABEL%%\"*}"
+        UUID="${ptInfo#* UUID=\"}"
+        UUID="${UUID%%\"*}"
+        devspec="$pt_dev"
+    else
+        command -v label_uuid_udevadm_trigger > /dev/null || . /lib/dracut-dev-lib.sh
+        label_uuid_udevadm_trigger "$devspec"
+        devspec=$(readlink -f "$(label_uuid_to_dev "$devspec")")
+    fi
+    udevadm wait -t 10 "$devspec"
+    setup_isoloop || Die "$devspec & $isofile could not be setup."
+}
+
+[ "$loopdev" ] || {
+    for devspec in /dev/disk/by-uuid/*; do
+        setup_isoloop || continue
+    done
+    rmdir "/run/initramfs/isoscan"
+    Die "Unable to find $isopath."
+}
 exit 1
