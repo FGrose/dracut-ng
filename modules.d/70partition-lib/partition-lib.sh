@@ -698,6 +698,123 @@ $fslist
     return 0
 }
 
+# $1 - isofile, $2 - UUID
+prompt_for_boot() {
+    echo '1 4 1 7' > /proc/sys/kernel/printk
+    local list="    #   START-UP BOOT ALTERNATIVES
+    1   ●  Start a transient '$isofile'
+ Select a target disc or partition for one of the following ..
+    2   ●  Start '$isofile' with persistence.
+ INSTALL a copy of '$isofile' isofile ..
+    3   ●  with persistence on a selected partition.
+    4   ●  with persistence on a new, separate partiton.
+ INSTALL ..
+    5   ●  a new, READ-ONLY rootfs partition from '$isofile'
+             (a sister persistence partition will be added on the same disc.)
+    6   ●  a new, READ-WRITE partition with the rootfs from '$isofile'
+ REFORMAT a disc with a new ESP and ..
+    7   ●  a persistence partition with a copy of '$isofile' isofile
+    8   ●  a READ-ONLY rootfs partition from '$isofile'
+             (a persistence partition will be added on the same disc.)
+    9   ●  a READ-WRITE partition with the rootfs from '$isofile'
+"
+    echo "Enter the number for your boot choice here: " > /tmp/prompt
+    case_block() {
+        case "$REPLY" in
+            [1-9]) : ;;
+            break) obj='break' ;;
+            *) obj='continue' ;;
+        esac
+    }
+    end_block() {
+        obj="$REPLY"
+    }
+    warnx=warn0
+    prompt_for_input
+
+    case "$objSelected" in
+        1)
+            c_line='rd.overlay=LiveOS_rootfs'
+            ;;
+        2)
+            message="
+
+    Select a target partition ..
+      for persistence of '$isofile'"
+            unset -v 'diskDevice' 'pt_dev'
+            prompt_for_device PT "$message" warn
+            c_line="rd.ovl.dir=PROMPT rd.overlay=${pt_dev:+UUID=$UUID},iso"
+            ;;
+        3)
+            message="
+
+    Select a target partition ..
+      for installing a copy of '$isofile' with persistence on the same partition."
+            unset -v 'diskDevice' 'pt_dev'
+            prompt_for_device PT "$message" warn
+            c_line="rd.ovl.dir=PROMPT rd.overlay=${pt_dev:+UUID=$UUID},PROMPTSZ,PROMPTFS,ciso"
+            ;;
+        4)
+            message="
+
+    Select a target partition ..
+      for installing a copy of '$isofile'
+        with persistence on a separate, new partition on the same disc."
+            unset -v 'diskDevice' 'pt_dev'
+            prompt_for_device BT "$message" warn
+            c_line="rd.ovl.dir=PROMPT rd.live.image=${pt_dev:+UUID=$UUID},ciso rd.overlay=serial=$serial/serial/,PROMPTSZ,PROMPTFS"
+            ;;
+        5)
+            message="
+
+    Select a target disc for installing
+      a new, READ-ONLY rootfs partition from '$isofile'
+      (a sister persistence partition will be added on the same disc.)"
+            unset -v 'diskDevice' 'pt_dev'
+            prompt_for_device BT "$message"
+            c_line="rd.live.image=ropt rd.ovl.dir=PROMPT rd.overlay=serial=$serial/serial/,PROMPTSZ,PROMPTFS"
+            ;;
+        6)
+            message="
+
+    Select a target disc for installing
+      a new, READ-WRITE partition with the rootfs from '$isofile'"
+            unset -v 'diskDevice' 'pt_dev'
+            prompt_for_device BT "$message"
+            c_line="rd.live.image=rwpt rd.ovl.dir=PROMPT rd.overlay=serial=$serial/serial/,PROMPTSZ,PROMPTFS"
+            ;;
+        7)
+            message="
+
+    Select a target disc for total reformatting with a new ESP and
+      a persistence partition with a copy of '$isofile' isofile."
+            unset -v 'diskDevice' 'pt_dev'
+            prompt_for_device BT "$message"
+            c_line="rd.live.image=mklabel,ciso rd.ovl.dir=PROMPT rd.overlay=serial=$serial/serial/,PROMPTSZ,PROMPTFS"
+            ;;
+        8)
+            message="
+
+    Select a target disc for total reformatting with a new ESP and 
+      a READ-ONLY rootfs partition from '$isofile',
+        and a persistence partition."
+            unset -v 'diskDevice' 'pt_dev'
+            prompt_for_device BT "$message"
+            c_line="rd.live.image=mklabel,ropt rd.overlay=serial=$serial/serial/,PROMPTSZ,PROMPTFS"
+            ;;
+        9)
+            message="
+
+    Select a target disc for total reformatting with a new ESP and 
+      a new, READ-WRITE partition with the rootfs from '$isofile'"
+            prompt_for_device BT "$message"
+            c_line="rd.live.image=mklabel,serial=$serial/serial/,PROMPTSZ,PROMPTFS,rwpt"
+            ;;
+    esac
+    echo "$c_line"
+    return 0
+}
+
 parse_cfgArgs() {
     local -
     set -x
