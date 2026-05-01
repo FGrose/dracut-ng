@@ -53,6 +53,11 @@ get_rd_overlay() {
         readonly_overlay=--readonly
         volatile=volatile
     }
+    getarg rd.overlay.all && {
+        systemctl mask systemd-remount-fs.service
+        systemctl reset-failed systemd-remount-fs.service
+        ln -sf readonlyall /run/initramfs/ro_all
+    }
 }
 
 # Called from overlayfs-generator.sh or dmsquash-generator.sh

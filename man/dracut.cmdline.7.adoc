@@ -1400,6 +1400,12 @@ under `/run/overlayfs`, the temporary, writable, upper directory overlay and
 over the base root filesystem to complete the bootable root filesystem.  This
 parameter will trigger mounting the OverlayFS with the 'volatile' mode option.
 
+**rd.overlay.all=**1::
+This is used to boot all non-pseudo/swap filesystems as readonly with tmpfs
+overlays using OverlayFS.  This provides a default stateless boot where all
+listed partitions are mounted transparently with overlays in a 'fsync=volatile'
+manner.  It does not prevent accidental or intentional remounting persistence. 
+
 **rd.overlay.reset=**1::
 Specifies that a persistent overlay should be reset on boot.  All previous root
 filesystem changes are vacated by this action.
