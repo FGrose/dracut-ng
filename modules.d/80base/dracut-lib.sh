@@ -33,9 +33,9 @@ escape() {
     printf '%s' "$1" | sed -e "s/'/'\\\\''/g"
 }
 
-# returns OK if $1 contains literal string $2 (and isn't empty)
+# returns OK if $1 contains literal string $2
 strstr() {
-    [ "${1##*"$2"*}" != "$1" ]
+    [ "a${1##*"$2"*}" != "a$1" ]
 }
 
 # returns OK if $1 matches (completely) glob pattern $2
