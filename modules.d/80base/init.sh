@@ -361,11 +361,11 @@ else
 fi
 debug_on
 
+wait_for_loginit
+
 if [ -d "$NEWROOT"/run ]; then
     mount --move /run "$NEWROOT"/run
 fi
-
-wait_for_loginit
 
 # remove helper symlink
 [ -h /dev/root ] && rm -f -- /dev/root
