@@ -20,9 +20,21 @@ if [ -z "${PREFIX-}" ]; then
 fi
 
 # printf %q implementation for POSIX shell
-# Safe usage: printf "variable='%s'\n" "$(escape "$value")"
-escape() {
-    printf '%s' "$1" | sed -e "s/'/'\\\\''/g"
+# Safe usage: printf "variable='%s'\n" "$(qescape "$value")"
+qescape() {
+    local str="$1" out=''
+    while :; do
+        case "$str" in
+            *\'*)
+                out="$out${str%%\'*}'\\''"
+                str="${str#*\'}"
+                ;;
+            *)
+                printf '%s' "$out$str"
+                return 0
+                ;;
+        esac
+    done
 }
 
 # returns OK if $1 matches (completely) glob pattern $2

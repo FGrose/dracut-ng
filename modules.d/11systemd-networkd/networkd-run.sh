@@ -14,9 +14,9 @@ for ifpath in /sys/class/net/*; do
         if [ -r "$leases_file" ]; then
             {
                 new_next_server="$(sed -n 's/^NEXT_SERVER=//p' "$leases_file")"
-                [ -n "$new_next_server" ] && printf "new_next_server='%s'\n" "$(escape "$new_next_server")"
+                [ -n "$new_next_server" ] && printf "new_next_server='%s'\n" "$(qescape "$new_next_server")"
                 new_root_path="$(sed -n 's/^ROOT_PATH=//p' "$leases_file")"
-                [ -n "$new_root_path" ] && printf "new_root_path='%s'\n" "$(escape "$new_root_path")"
+                [ -n "$new_root_path" ] && printf "new_root_path='%s'\n" "$(qescape "$new_root_path")"
 
                 # systemd-networkd mixes IPv4 and IPv6 addresses under
                 # the same NTP= property, but dhclient has two properties
@@ -35,8 +35,8 @@ for ifpath in /sys/class/net/*; do
                             ;;
                     esac
                 done
-                [ -n "$ntp_ipv4" ] && printf "new_ntp_servers=%s\n" "$(escape "$ntp_ipv4")"
-                [ -n "$ntp_ipv6" ] && printf "new_dhcp6_ntp_servers=%s\n" "$(escape "$ntp_ipv6")"
+                [ -n "$ntp_ipv4" ] && printf "new_ntp_servers=%s\n" "$(qescape "$ntp_ipv4")"
+                [ -n "$ntp_ipv6" ] && printf "new_dhcp6_ntp_servers=%s\n" "$(qescape "$ntp_ipv6")"
 
             } > "$dhcpopts_file"
         else
@@ -45,10 +45,10 @@ for ifpath in /sys/class/net/*; do
             if [ -n "$lease" ]; then
                 {
                     next_server=$(printf '%s\n' "$lease" | sed -n "s/^[[:space:]]*Server Address:[[:space:]]*//p")
-                    [ -n "$next_server" ] && printf "new_next_server='%s'\n" "$(escape "$next_server")"
+                    [ -n "$next_server" ] && printf "new_next_server='%s'\n" "$(qescape "$next_server")"
                     # option 17 is the DHCP root-path; strip the leading "<code> <name> " columns
                     root_path=$(printf '%s\n' "$lease" | sed -n "s/^[[:space:]]*17[[:space:]].*[[:space:]]//p")
-                    [ -n "$root_path" ] && printf "new_root_path='%s'\n" "$(escape "$root_path")"
+                    [ -n "$root_path" ] && printf "new_root_path='%s'\n" "$(qescape "$root_path")"
 
                     # DHCP options containing information about NTP servers:
                     # - option 42: IPv4, no FQDN allowed. Parsing this option is
@@ -68,7 +68,7 @@ for ifpath in /sys/class/net/*; do
                         | sed -n "/^[[:space:]]*42 NTP server/{p; :a; n; /^[[:space:]]\+[0-9]/ {p; ba;};}" \
                         | sed "s/^[[:space:]]*42 NTP server//; s/^[[:space:]]*//" \
                         | tr '\n' ' ')
-                    [ -n "$ntp_servers" ] && printf "new_ntp_servers='%s'\n" "$(escape "$(trim "$ntp_servers")")"
+                    [ -n "$ntp_servers" ] && printf "new_ntp_servers='%s'\n" "$(qescape "$(trim "$ntp_servers")")"
 
                 } > "$dhcpopts_file" || :
             fi
