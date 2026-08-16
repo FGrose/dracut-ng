@@ -335,45 +335,37 @@ getargnum() {
     echo "$_default"
 }
 
-# getargs <KEY>[=[<VALUE>]] [-d [-{y|n}] <alt_KEY>[=[<VALUE>]] ...]
+# getargs <KEY>[=[<VALUE>]] [-d <alt_KEY>[=[<VALUE>]] ...]
 # With <KEY>[=], print a newline-separated list of the <VALUE>s of any instance
-# of <KEY>=<VALUE> in the kernel command line and return success.
+# of <KEY>=<VALUE> in the kernel command line and return success if any KEY is found.
 # When <KEY> is present without the optional =<VALUE> argument, print the <KEY>
 # string in place of a <VALUE>.
-# When a =<VALUE> argument is provided, return success or failure only.
-# -d signals that <alt_KEY> is deprecated in place of <KEY>;
+# -d signals that <alt_KEY> is deprecated in place of <KEY>.
 getargs() {
-    debug_off
+    local _i _j _gfound='' _dpr=''
+    set +x
     CMDLINE=$(getcmdline)
     export CMDLINE
-    local _val _i _gfound="" _deprecated=""
-    unset _val
-    _newoption="$1"
-    for _i in "$@"; do
-        if [ "$_i" = "-d" ]; then
-            _deprecated=1
-            continue
-        fi
-
-        if _val="$(dracut-getargs "$_i")"; then
-            if [ "$_deprecated" = "1" ]; then
-                if [ -n "$_newoption" ]; then
-                    warn "Option '$_i' is deprecated, use '$_newoption' instead."
-                else
-                    warn "Option $_i is deprecated!"
-                fi
-            fi
-            if [ -n "$_val" ]; then
-                printf '%s\n' "$_val"
-            fi
-            _gfound=1
-        fi
-        _deprecated=0
+    set -- "$@"
+    for _j; do
+        _new="$_j"
+        case "$_j" in
+            -d) _dpr=1; shift; continue ;;
+            *)
+                _new="$_i"
+                dracut-getargs "$_j" && {
+                    [ "$_dpr" ] && warn 'Option '"$_j"' is deprecated!'"${_new:+ Use '$_new' instead.}"
+                    _gfound=1
+                }
+                _dpr=''
+                ;;
+        esac
+        _i="$_j"
     done
-    if [ -n "$_gfound" ]; then
+    [ "$_gfound" ] && {
         debug_on
         return 0
-    fi
+    }
     debug_on
     return 1
 }
