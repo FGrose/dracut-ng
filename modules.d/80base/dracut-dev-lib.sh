@@ -23,7 +23,8 @@ str_replace() {
 # get a systemd-compatible unit name from a path
 # (mimics unit_name_from_path_instance())
 dev_unit_name() {
-    local dev="$1"
+    local - dev="$1" out='' chop
+    set +x
 
     if command -v systemd-escape > /dev/null; then
         case $dev in
@@ -33,22 +34,50 @@ dev_unit_name() {
         return $?
     fi
 
-    if [ "$dev" = "/" ] || [ -z "$dev" ]; then
-        printf -- "-"
-        return 0
-    fi
+    case $dev in
+        '' | /)
+            printf -- '-'
+            return 0
+            ;;
+    esac
 
-    dev="${1%%/}"
-    dev="${dev##/}"
-    # shellcheck disable=SC1003
-    dev="$(str_replace "$dev" '\' '\x5c')"
-    dev="$(str_replace "$dev" '-' '\x2d')"
-    if [ "${dev##.}" != "$dev" ]; then
-        dev="\x2e${dev##.}"
-    fi
-    dev="$(str_replace "$dev" '/' '-')"
-
-    printf -- "%s" "$dev"
+    while [ "${dev%/}" != "$dev" ]; do dev="${dev%/}"; done
+    while [ "${dev#/}" != "$dev" ]; do dev="${dev#/}"; done
+    while :; do case $dev in *//*) dev="${dev%%//*}/${dev#*//}" ;; *) break ;; esac done
+    dun=''
+    [ "${dev#\.}" != "$dev" ] && dun='\x2e'
+    dev="${dev#\.}"
+    while :; do
+        case $dev in
+            *[\\/\ -]*)
+                chop="${dev%%[\\/ -]*}"
+                out="${out}${chop}"
+                case $dev in
+                    "$chop"\\*)
+                        out="${out}\\x5c"
+                        dev="${dev#"$chop"\\}"
+                        ;;
+                    "$chop"/*)
+                        out="${out}-"
+                        dev="${dev#"$chop"/}"
+                        ;;
+                    "$chop"\ *)
+                        out="${out}\\x20"
+                        dev="${dev#"$chop" }"
+                        ;;
+                    "$chop"-*)
+                        out="${out}\\x2d"
+                        dev="${dev#"$chop"-}"
+                        ;;
+                esac
+                ;;
+            *)
+                dun="${dun}${out}${dev}"
+                break
+                ;;
+        esac
+    done
+    printf -- '%s' "$dun"
 }
 
 # wait_for_dev <dev> [<timeout>]
