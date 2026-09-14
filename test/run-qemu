@@ -105,7 +105,7 @@ set_vmlinux_env() {
         fi
 
         if ! [ -f "$VMLINUZ" ]; then
-            [[ -f /etc/machine-id ]] && read -r MACHINE_ID < /etc/machine-id
+            [[ -s /etc/machine-id ]] && read -r MACHINE_ID < /etc/machine-id
 
             if [[ ${MACHINE_ID-} ]] && { [[ -d /boot/${MACHINE_ID} ]] || [[ -L /boot/${MACHINE_ID} ]]; }; then
                 VMLINUZ="/boot/${MACHINE_ID}/$KVERSION/linux"
